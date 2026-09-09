@@ -1,0 +1,46 @@
+#pragma once
+
+#include "aster/cache/cache/encodedmemorycache.h"
+#include "aster/cache/cache/idiskcache.h"
+#include "networkservice.h"
+
+namespace aster::cache
+{
+struct SourceCacheConfig
+{
+    bool encodedNetwork = true;
+    bool encodedLocal = false;
+    bool encodedData = false;
+    QList<QByteArray> excludedMimeTypes;
+    bool encodedResource = true;
+};
+
+class CachedSourceLoader final : public IImageSourceLoader
+{
+public:
+    CachedSourceLoader(std::shared_ptr<EncodedMemoryCache> encoded,
+                       std::shared_ptr<IDiskCache> disk = {},
+                       std::shared_ptr<INetworkService> network = {},
+                       std::shared_ptr<Clock> clock = std::make_shared<SystemClock>(),
+                       SourceCacheConfig config = {});
+    Result<SourceKey> key(const ImageSource&) const override;
+    void trimMemory(bool critical) override;
+    SourceCacheStats cacheStats() const override;
+    bool invalidate(const CacheSelector&) override;
+    Result<SourcePayload> load(const ImageSource&, const SourceKey&, const SourceLoadOptions&,
+                               const std::atomic<bool>&) override;
+
+private:
+    Result<SourcePayload> network(const ImageSource&, const SourceKey&, const SourceLoadOptions&,
+                                  const std::atomic<bool>&);
+    bool encodedEnabled(ImageSource::Kind) const;
+    std::shared_ptr<EncodedMemoryCache> encoded_;
+    std::shared_ptr<IDiskCache> disk_;
+    std::shared_ptr<INetworkService> network_;
+    std::shared_ptr<Clock> clock_;
+    SourceCacheConfig config_;
+    mutable std::mutex metricsMutex_;
+    NetworkStats networkStats_;
+    std::atomic<quint64> diskExceptions_{0};
+};
+}

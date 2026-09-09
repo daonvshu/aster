@@ -1,0 +1,10 @@
+/cmake-build-*/
+/build/
+/out/
+*.user
+*.idea
+
+# CI and documents are excluded for now.
+/.github/
+*.[mM][dD]
+*.[dD][oO][cC][xX]

@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/aster-test">
+        <file alias="sample.ppm">sample.ppm</file>
+    </qresource>
+</RCC>
