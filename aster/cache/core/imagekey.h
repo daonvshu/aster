@@ -1,5 +1,6 @@
 #pragma once
 
+#include "imagerendergeometry.h"
 #include "imageresult.h"
 
 #include <QByteArray>
@@ -86,6 +87,8 @@ struct RenderOptions
     QByteArray fitMode = "contain";
     QVector<ProcessorIdentity> processors;
     quint32 schemaVersion = 1;
+    ImageScaleAlgorithm scaleAlgorithm = ImageScaleAlgorithm::QtSmooth;
+    quint32 resamplerVersion = 1;
 };
 
 class KeyBuilder

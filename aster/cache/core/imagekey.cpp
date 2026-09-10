@@ -1,5 +1,7 @@
 #include "imagekey.h"
 
+#include "resampleconfig.h"
+
 #include <QCryptographicHash>
 #include <QDataStream>
 #include <QDateTime>
@@ -104,15 +106,17 @@ Result<RenderKey> KeyBuilder::render(const SourceKey& source, const RenderOption
 {
     if (source.digest.size() != 32 || o.physicalTargetSize.width() <= 0 ||
         o.physicalTargetSize.height() <= 0 || !std::isfinite(o.dpr) || o.dpr <= 0 ||
-        o.fitMode.isEmpty() || o.schemaVersion == 0)
+        o.fitMode.isEmpty() || o.schemaVersion == 0 || o.resamplerVersion == 0 ||
+        int(o.scaleAlgorithm) < int(ImageScaleAlgorithm::QtFast) ||
+        int(o.scaleAlgorithm) > int(ImageScaleAlgorithm::Lanczos4))
         return Result<RenderKey>::failure(ImageError::InvalidRequest);
 
     QByteArray bytes;
     QDataStream stream(&bytes, QIODevice::WriteOnly);
     configure(stream);
-    stream << QByteArray("aster/render/v1") << source.digest << qint32(o.physicalTargetSize.width())
+    stream << QByteArray("aster/render/v2") << source.digest << qint32(o.physicalTargetSize.width())
            << qint32(o.physicalTargetSize.height()) << o.dpr << o.fitMode << o.schemaVersion
-           << quint32(o.processors.size());
+           << quint32(o.scaleAlgorithm) << o.resamplerVersion << quint32(o.processors.size());
 
     for (const auto& p : o.processors)
     {
@@ -121,6 +125,11 @@ Result<RenderKey> KeyBuilder::render(const SourceKey& source, const RenderOption
         stream << p.identifier << p.version << p.parameters;
     }
 
+#if ASTER_LANCZOS_USE_LUT
+    if (o.scaleAlgorithm == ImageScaleAlgorithm::Lanczos3 ||
+        o.scaleAlgorithm == ImageScaleAlgorithm::Lanczos4)
+        stream << QByteArray("lanczos-lut4096-q30-v1");
+#endif
     return Result<RenderKey>::success({source, digest(bytes)});
 }
 

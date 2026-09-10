@@ -619,6 +619,7 @@ void thirdRoundTests();
 void fourthRoundTests();
 void imageServiceTests();
 void friendlyRequestTests();
+void resamplerTests();
 int diskCrashProbe(const QStringList&);
 
 int main(int argc, char** argv)
@@ -650,6 +651,7 @@ int main(int argc, char** argv)
         thirdRoundTests();
         fourthRoundTests();
         friendlyRequestTests();
+        resamplerTests();
         imageServiceTests();
     }
     catch (const std::exception& error)

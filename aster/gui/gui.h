@@ -1,5 +1,3 @@
 #pragma once
 
-namespace aster::gui
-{
-}
+#include "imagebox.h"

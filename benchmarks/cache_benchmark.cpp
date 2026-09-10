@@ -15,6 +15,8 @@ using Samples = std::vector<double>;
 int diskBenchmark();
 int renderedBenchmark();
 int decoderBenchmark();
+int resamplerBenchmark();
+int lutBenchmark();
 
 template <class Function> Samples measure(int count, Function operation)
 {
@@ -39,6 +41,10 @@ void report(int count, const char* name, Samples samples)
 int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);
+    if (app.arguments().contains("--lut"))
+        return lutBenchmark();
+    if (app.arguments().contains("--resample"))
+        return resamplerBenchmark();
     if (app.arguments().contains("--decode"))
         return decoderBenchmark();
     if (app.arguments().contains("--rendered"))

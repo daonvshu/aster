@@ -1,5 +1,8 @@
 add_library(aster_cache STATIC
     core/imagekey.cpp
+    core/imagerendergeometry.cpp
+    renderer/imageresampler.cpp
+    renderer/imagerenderer.cpp
     decoder/boundedimagedecoder.cpp
     cache/renderedmemorycache.cpp
     cache/encodedmemorycache.cpp
@@ -13,6 +16,8 @@ add_library(aster_cache STATIC
     service/imageservice.cpp
     pipeline/imagepipeline.cpp)
 add_library(aster::cache ALIAS aster_cache)
+option(ASTER_LANCZOS_USE_LUT "Use approximate integer Lanczos kernel tables by default" OFF)
+target_compile_definitions(aster_cache PUBLIC ASTER_LANCZOS_USE_LUT=$<BOOL:${ASTER_LANCZOS_USE_LUT}>)
 add_library(aster::aster ALIAS aster_cache)
 set_target_properties(aster_cache PROPERTIES AUTOMOC ON)
 target_include_directories(aster_cache PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>)
@@ -40,4 +45,3 @@ if(ASTER_BUILD_QT_NETWORK)
     add_library(aster::network ALIAS aster_network)
     target_link_libraries(aster_network PUBLIC aster::cache Qt${QT_VERSION_MAJOR}::Network)
 endif()
-

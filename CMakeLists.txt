@@ -34,9 +34,24 @@ endif()
 add_custom_target(aster DEPENDS aster_cache)
 
 if(BUILD_TESTING)
+    if(ASTER_BUILD_GUI)
+        find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Test)
+        add_executable(aster_gui_tests tests/imagebox_tests.cpp tests/resources/source_resources.qrc)
+        set_target_properties(aster_gui_tests PROPERTIES AUTOMOC ON AUTORCC ON)
+        target_link_libraries(aster_gui_tests PRIVATE aster::gui Qt${QT_VERSION_MAJOR}::Test)
+        add_test(NAME aster_gui_tests COMMAND aster_gui_tests)
+        set_tests_properties(aster_gui_tests PROPERTIES TIMEOUT 120
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt${QT_VERSION_MAJOR}::Core>/../plugins")
+        if(WIN32)
+            set_property(TEST aster_gui_tests APPEND PROPERTY ENVIRONMENT
+                "PATH=$<TARGET_FILE_DIR:Qt${QT_VERSION_MAJOR}::Core>\\;$ENV{PATH}")
+        endif()
+    endif()
+
     add_executable(aster_tests tests/cache_tests.cpp tests/second_round_tests.cpp
         tests/third_round_tests.cpp tests/fourth_round_tests.cpp tests/imageservice_tests.cpp
-        tests/friendly_request_tests.cpp tests/resources/source_resources.qrc)
+        tests/friendly_request_tests.cpp tests/resampler_tests.cpp
+        tests/reference/picasaresampler.cpp tests/resources/source_resources.qrc)
     set_target_properties(aster_tests PROPERTIES AUTORCC ON)
     target_link_libraries(aster_tests PRIVATE aster::cache)
     if(ASTER_BUILD_QT_NETWORK)
@@ -66,6 +81,7 @@ endif()
 option(ASTER_BUILD_BENCHMARKS "Build the cache benchmark" ON)
 if(ASTER_BUILD_BENCHMARKS)
     add_executable(aster_benchmark benchmarks/cache_benchmark.cpp benchmarks/disk_benchmark.cpp
-        benchmarks/rendered_benchmark.cpp benchmarks/decoder_benchmark.cpp)
+        benchmarks/rendered_benchmark.cpp benchmarks/decoder_benchmark.cpp
+        benchmarks/resampler_benchmark.cpp)
     target_link_libraries(aster_benchmark PRIVATE aster::cache)
 endif()
