@@ -1,8 +1,11 @@
 /cmake-build-*/
 /build/
 /out/
+/script/
 *.user
 *.idea
+__pycache__/
+*.pyc
 
 # CI and documents are excluded for now.
 /.github/

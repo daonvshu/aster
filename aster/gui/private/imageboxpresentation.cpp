@@ -46,6 +46,12 @@ void ImageBoxPresentation::clear()
     owner_.update();
 }
 
+void ImageBoxPresentation::releaseHandle()
+{
+    finishTransition();
+    currentHandle_.reset();
+}
+
 void ImageBoxPresentation::accept(cache::ImageResult result, QSize target, ImageFit fit, qreal dpr)
 {
     finishTransition();
@@ -86,7 +92,7 @@ void ImageBoxPresentation::accept(cache::ImageResult result, QSize target, Image
 void ImageBoxPresentation::paint(QPainter& painter, qreal dpr, ImageFit fit, bool error)
 {
     const ImageFramePainter framePainter(owner_.contentsRect(), dpr, fit);
-    painter.setClipRect(owner_.contentsRect());
+    painter.setClipRect(owner_.contentsRect(), Qt::IntersectClip);
     const bool errorVisual =
         error && !errorImage_.isNull() && (currentImage_.isNull() || errorReplacesImage_);
     if (errorVisual || currentImage_.isNull())

@@ -12,6 +12,7 @@
 #include <QtTest>
 
 #include <condition_variable>
+#include <limits>
 #include <mutex>
 
 using namespace aster::cache;
@@ -142,6 +143,274 @@ class ImageBoxTests : public QObject
 
 private Q_SLOTS:
 
+    void roundedCorners()
+    {
+        ControlledPipeline fixture;
+        fixture.loader->releaseAll();
+        fixture.pipeline = QSharedPointer<ImagePipeline>::create(
+            QSharedPointer<RenderedMemoryCache>::create(65536), fixture.loader, ImageRenderer{});
+        ImageBox box;
+        box.resize(40, 40);
+        box.setPipeline(fixture.pipeline);
+        auto palette = box.palette();
+        palette.setColor(QPalette::Window, Qt::black);
+        box.setPalette(palette);
+        box.setAutoFillBackground(true);
+        QImage placeholder(40, 40, QImage::Format_RGB32);
+        placeholder.fill(Qt::yellow);
+        box.setPlaceholder(placeholder);
+        box.show();
+        const auto render = [&]
+        {
+            QImage canvas(box.size(), QImage::Format_RGB32);
+            canvas.fill(Qt::black);
+            box.render(&canvas);
+            return canvas;
+        };
+
+        QCOMPARE(box.cornerRadius(), qreal(0));
+        QCOMPARE(render().pixelColor(0, 0), QColor(Qt::yellow));
+        QSignalSpy changed(&box, &ImageBox::cornerRadiusChanged);
+        QVERIFY(box.setProperty("cornerRadius", 12.0));
+        QCOMPARE(box.cornerRadius(), qreal(12));
+        box.setCornerRadius(12);
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(render().pixelColor(0, 0), QColor(Qt::black));
+        QCOMPARE(render().pixelColor(20, 20), QColor(Qt::yellow));
+        QVERIFY_EXCEPTION_THROWN(box.setCornerRadius(-1), std::invalid_argument);
+        QVERIFY_EXCEPTION_THROWN(box.setCornerRadius(std::numeric_limits<qreal>::infinity()),
+                                 std::invalid_argument);
+        QVERIFY_EXCEPTION_THROWN(box.setCornerRadius(std::numeric_limits<qreal>::quiet_NaN()),
+                                 std::invalid_argument);
+        QCOMPARE(box.cornerRadius(), qreal(12));
+
+        box.setSource("https://example.test/a");
+        QTRY_COMPARE(box.state(), ImageBoxState::Ready);
+        QCOMPARE(render().pixelColor(0, 0), QColor(Qt::black));
+        QCOMPARE(render().pixelColor(20, 20), QColor(Qt::red));
+        QSignalSpy loading(&box, &ImageBox::loadingStarted);
+        box.setCornerRadius(0);
+        QCOMPARE(render().pixelColor(0, 0), QColor(Qt::red));
+        box.setCornerRadius(1000);
+        QCOMPARE(render().pixelColor(0, 0), QColor(Qt::black));
+        QCOMPARE(render().pixelColor(20, 20), QColor(Qt::red));
+        QCOMPARE(loading.count(), 0);
+
+        box.setTransition(ImageTransition::CrossFade);
+        box.setTransitionDuration(1000);
+        box.setSource("https://example.test/b");
+        QTRY_COMPARE(box.state(), ImageBoxState::Ready);
+        QTRY_VERIFY(box.transitionProgress() >= 0.3);
+        QVERIFY(box.isTransitionRunning());
+        const auto blended = render();
+        QCOMPARE(blended.pixelColor(0, 0), QColor(Qt::black));
+        QVERIFY(blended.pixelColor(20, 20).red() > 0);
+        QVERIFY(blended.pixelColor(20, 20).blue() > 0);
+        box.setTransition(ImageTransition::None);
+        box.setContentsMargins(4, 4, 4, 4);
+        QCOMPARE(render().pixelColor(4, 4), QColor(Qt::black));
+        QCOMPARE(render().pixelColor(20, 20), QColor(Qt::blue));
+
+        placeholder.fill(Qt::green);
+        box.setErrorImage(placeholder);
+        box.setErrorReplacesImage(true);
+        box.setPipeline(normalPipeline());
+        box.setSource(":/missing-rounded.png");
+        QTRY_COMPARE(box.state(), ImageBoxState::Error);
+        QCOMPARE(render().pixelColor(4, 4), QColor(Qt::black));
+        QCOMPARE(render().pixelColor(20, 20), QColor(Qt::green));
+    }
+
+    void offscreenPolicies()
+    {
+        for (auto policy :
+             {OffscreenPolicy::Keep, OffscreenPolicy::ReleaseHandle, OffscreenPolicy::ReleaseImage})
+        {
+            ControlledPipeline fixture;
+            fixture.loader->releaseAll();
+            ImageBox box;
+            box.resize(8, 8);
+            box.setPipeline(fixture.pipeline);
+            box.setOffscreenPolicy(policy);
+            QCOMPARE(box.offscreenPolicy(), policy);
+            box.setSource("https://example.test/a");
+            QCOMPARE(box.state(), ImageBoxState::Empty);
+            QCOMPARE(fixture.loader->started("/a"), 0);
+            box.show();
+            QTRY_COMPARE(box.state(), ImageBoxState::Ready);
+            flushDeletes();
+            QCOMPARE(fixture.active->stats().entries, qint64(1));
+            const auto hits = fixture.pipeline->cacheStats().renderedMemory.hits;
+            QSignalSpy loaded(&box, &ImageBox::loaded);
+            box.hide();
+            flushDeletes();
+            QCOMPARE(fixture.active->stats().entries,
+                     policy == OffscreenPolicy::Keep ? qint64(1) : qint64(0));
+            QCOMPARE(box.image().isNull(), policy == OffscreenPolicy::ReleaseImage);
+            box.show();
+            if (policy != OffscreenPolicy::Keep)
+                QTRY_COMPARE(loaded.count(), 1);
+            QCoreApplication::processEvents();
+            QTRY_COMPARE(box.state(), ImageBoxState::Ready);
+            QCOMPARE(box.image().pixelColor(0, 0), QColor(Qt::red));
+            QCOMPARE(loaded.count(), policy == OffscreenPolicy::Keep ? 0 : 1);
+            if (policy != OffscreenPolicy::Keep)
+                QVERIFY(fixture.pipeline->cacheStats().renderedMemory.hits > hits);
+            flushDeletes();
+            QCOMPARE(fixture.active->stats().entries, qint64(1));
+            box.hide();
+            box.setOffscreenPolicy(OffscreenPolicy::ReleaseImage);
+            QVERIFY(box.image().isNull());
+            QCOMPARE(fixture.active->stats().entries, qint64(0));
+            box.setSource("");
+            box.show();
+            QCOMPARE(box.state(), ImageBoxState::Empty);
+        }
+    }
+
+    void hiddenRequestsAndReentrancy()
+    {
+        ControlledPipeline fixture;
+        QWidget parent;
+        ImageBox box(&parent);
+        box.resize(8, 8);
+        box.setPipeline(fixture.pipeline);
+        box.setLoadingIndicatorEnabled(true);
+        parent.show();
+        box.setSource("https://example.test/a");
+        QTRY_COMPARE(fixture.loader->started("/a"), 1);
+        QSignalSpy loaded(&box, &ImageBox::loaded);
+        QSignalSpy failed(&box, &ImageBox::loadFailed);
+        parent.hide();
+        QCOMPARE(box.state(), ImageBoxState::Empty);
+        QVERIFY(!box.isLoadingIndicatorActive());
+        QVERIFY(box.findChildren<ImageSubscription*>().isEmpty());
+        fixture.loader->release("/a");
+        QVERIFY(fixture.pipeline->waitForIdle());
+        QCoreApplication::processEvents();
+        QCOMPARE(loaded.count(), 0);
+        QCOMPARE(failed.count(), 0);
+        box.setSource("https://example.test/b");
+        box.resize(12, 12);
+        QCOMPARE(fixture.loader->started("/b"), 0);
+        parent.show();
+        QTRY_COMPARE(fixture.loader->started("/b"), 1);
+        fixture.loader->release("/b");
+        QTRY_COMPARE(box.state(), ImageBoxState::Ready);
+        QCOMPARE(box.image().pixelColor(0, 0), QColor(Qt::blue));
+        box.setResizeDebounceInterval(500);
+        box.resize(20, 20);
+        QCOMPARE(box.state(), ImageBoxState::Loading);
+        box.hide();
+        box.cancelCurrentRequest();
+        const auto calls = fixture.loader->started("/b");
+        box.show();
+        // The changed size still needs rendering, but the cancelled debounce never fires hidden.
+        QTRY_COMPARE(box.state(), ImageBoxState::Ready);
+        QVERIFY(fixture.loader->started("/b") <= calls + 1);
+
+        QPointer<ImageBox> victim = new ImageBox;
+        victim->setPipeline(fixture.pipeline);
+        victim->show();
+        connect(victim, &ImageBox::stateChanged, this,
+                [victim](ImageBoxState state)
+                {
+                    if (state == ImageBoxState::Empty)
+                        delete victim.data();
+                });
+        victim->setSource("https://example.test/pending");
+        victim->hide();
+        QTRY_VERIFY(victim.isNull());
+        fixture.loader->releaseAll();
+    }
+
+    void rapidVisibility()
+    {
+        ControlledPipeline fixture;
+        ImageBox box;
+        box.resize(8, 8);
+        box.setPipeline(fixture.pipeline);
+        box.setOffscreenPolicy(OffscreenPolicy::ReleaseImage);
+        QSignalSpy loaded(&box, &ImageBox::loaded);
+        for (int i = 0; i < 100; ++i)
+        {
+            box.show();
+            box.setSource(QString("https://example.test/pending-%1").arg(i));
+            box.hide();
+            QVERIFY(box.findChildren<ImageSubscription*>().isEmpty());
+            QCOMPARE(box.state(), ImageBoxState::Empty);
+        }
+        fixture.loader->releaseAll();
+        QVERIFY(fixture.pipeline->waitForIdle());
+        QCoreApplication::processEvents();
+        QCOMPARE(loaded.count(), 0);
+        QVERIFY(box.image().isNull());
+        QCOMPARE(fixture.active->stats().entries, qint64(0));
+        box.setSource("https://example.test/a");
+        box.show();
+        QTRY_COMPARE(box.state(), ImageBoxState::Ready);
+        QCOMPARE(box.image().pixelColor(0, 0), QColor(Qt::red));
+        QCOMPARE(loaded.count(), 1);
+    }
+
+    void largeOffscreenList()
+    {
+        constexpr int count = 1056;
+        constexpr int visibleCount = 32;
+        auto loader = QSharedPointer<ControlledLoader>::create();
+        loader->releaseAll();
+        auto active = QSharedPointer<ActiveResourceStore>::create(4 * 1024 * 1024);
+        auto pipeline = QSharedPointer<ImagePipeline>::create(
+            QSharedPointer<RenderedMemoryCache>::create(4 * 1024 * 1024), loader, decode, 4,
+            EventSink{}, PipelineResources{nullptr, active});
+        QWidget parent;
+        parent.resize(256, 256);
+        QVector<ImageBox*> boxes;
+        for (int i = 0; i < count; ++i)
+        {
+            auto* box = new ImageBox(&parent);
+            box->resize(8, 8);
+            box->setOffscreenPolicy(OffscreenPolicy::ReleaseImage);
+            box->hide();
+            box->setPipeline(pipeline);
+            box->setSource(QString("https://example.test/image-%1").arg(i));
+            boxes.push_back(box);
+        }
+        parent.show();
+        QCOMPARE(pipeline->stats().renderInFlight, 0);
+        for (int pass = 0; pass < 2; ++pass)
+        {
+            for (int start = 0; start < count; start += visibleCount)
+            {
+                for (int i = start; i < start + visibleCount; ++i)
+                    boxes[i]->show();
+                auto ready = [&]
+                {
+                    for (int i = start; i < start + visibleCount; ++i)
+                        if (boxes[i]->state() != ImageBoxState::Ready)
+                            return false;
+                    return true;
+                };
+                QTRY_VERIFY(ready());
+                flushDeletes();
+                QVERIFY(active->stats().entries <= visibleCount);
+                for (int i = start; i < start + visibleCount; ++i)
+                {
+                    QCOMPARE(boxes[i]->image().pixelColor(0, 0), QColor(Qt::blue));
+                    boxes[i]->hide();
+                    QVERIFY(boxes[i]->image().isNull());
+                    QVERIFY(boxes[i]->findChildren<ImageSubscription*>().isEmpty());
+                }
+                flushDeletes();
+                QCOMPARE(active->stats().entries, qint64(0));
+            }
+        }
+        QVERIFY(pipeline->waitForIdle());
+        QCOMPARE(pipeline->stats().renderInFlight, 0);
+        QCOMPARE(active->stats().bytes, qint64(0));
+        QVERIFY(pipeline->cacheStats().renderedMemory.totalBytes <= 4 * 1024 * 1024);
+    }
+
     void presentationOwnership()
     {
         auto* box = new ImageBox;
@@ -182,7 +451,7 @@ private Q_SLOTS:
         box.hide();
         QVERIFY(!box.isLoadingIndicatorActive());
         box.show();
-        QVERIFY(box.isLoadingIndicatorActive());
+        QTRY_VERIFY(box.isLoadingIndicatorActive());
         fixture.loader->release("/a");
         QTRY_COMPARE(box.state(), ImageBoxState::Ready);
         QVERIFY(!box.isLoadingIndicatorActive());

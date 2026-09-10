@@ -4,10 +4,13 @@
 
 #include <QEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QSharedPointer>
 #include <QThread>
 #include <QTimer>
 
+#include <algorithm>
+#include <cmath>
 #include <stdexcept>
 
 namespace aster::gui
@@ -107,6 +110,7 @@ void ImageBox::invalidateRequest()
 void ImageBox::cancelCurrentRequest()
 {
     Q_ASSERT(QThread::currentThread() == thread());
+    resumePending_ = false;
     if (state_ != ImageBoxState::Loading)
         return;
 
@@ -119,6 +123,7 @@ void ImageBox::cancelCurrentRequest()
 void ImageBox::startRequest()
 {
     invalidateRequest();
+    resumePending_ = false;
     error_ = cache::ImageError::None;
     errorString_.clear();
     if (source_.isEmpty())
@@ -127,6 +132,13 @@ void ImageBox::startRequest()
         presentation_->clear();
         update();
         setState(ImageBoxState::Empty);
+        return;
+    }
+
+    if (suspended_)
+    {
+        resumePending_ = true;
+        setState(presentation_->image().isNull() ? ImageBoxState::Empty : ImageBoxState::Ready);
         return;
     }
 
@@ -221,7 +233,7 @@ void ImageBox::applyResult(quint64 generation, cache::ImageResult result)
         Q_EMIT loadFailed(result.error, result.message);
 }
 
-void ImageBox::setState(ImageBoxState state)
+void ImageBox::setState(ImageBoxState state, bool queuedNotification)
 {
     if (state_ == state)
         return;
@@ -229,13 +241,54 @@ void ImageBox::setState(ImageBoxState state)
     state_ = state;
     presentation_->syncLoadingIndicator(state_ == ImageBoxState::Loading);
     update();
+    if (queuedNotification)
+    {
+        const auto generation = generation_;
+        QTimer::singleShot(0, this,
+                           [this, state, generation]
+                           {
+                               if (generation_ == generation && state_ == state)
+                                   Q_EMIT stateChanged(state);
+                           });
+        return;
+    }
     Q_EMIT stateChanged(state);
 }
 
 void ImageBox::paintEvent(QPaintEvent*)
 {
     QPainter painter(this);
+    if (cornerRadius_ > 0)
+    {
+        const QRectF bounds(contentsRect());
+        if (bounds.isEmpty())
+            return;
+
+        const qreal radius = std::min(cornerRadius_, std::min(bounds.width(), bounds.height()) / 2);
+        QPainterPath clip;
+        clip.addRoundedRect(bounds, radius, radius);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setClipPath(clip, Qt::IntersectClip);
+    }
     presentation_->paint(painter, requestDevicePixelRatio(), fit_, state_ == ImageBoxState::Error);
+}
+
+qreal ImageBox::cornerRadius() const
+{
+    return cornerRadius_;
+}
+
+void ImageBox::setCornerRadius(qreal radius)
+{
+    Q_ASSERT(QThread::currentThread() == thread());
+    if (!std::isfinite(radius) || radius < 0)
+        throw std::invalid_argument("Invalid corner radius");
+    if (cornerRadius_ == radius)
+        return;
+
+    cornerRadius_ = radius;
+    update();
+    Q_EMIT cornerRadiusChanged(radius);
 }
 
 ImageFit ImageBox::fit() const
@@ -309,6 +362,11 @@ void ImageBox::scheduleSizeRequest()
 {
     if (source_.isEmpty())
         return;
+    if (suspended_)
+    {
+        resumePending_ = true;
+        return;
+    }
     const auto dpr = requestDevicePixelRatio();
     const auto target = cache::physicalTargetSize(contentsRect().size(), dpr, targetSizeBucket_);
     if (target && *target.value == requestedTarget_ && dpr == requestedDpr_ &&
@@ -340,11 +398,23 @@ bool ImageBox::event(QEvent* event)
     if (!guard)
         return result;
     if (type == QEvent::Hide)
-        presentation_->finishTransition();
-    if (type == QEvent::Hide || type == QEvent::Show)
-        presentation_->syncLoadingIndicator(state_ == ImageBoxState::Loading);
-    if (type == QEvent::ScreenChangeInternal || type == QEvent::Show ||
-        type == QEvent::ContentsRectChange
+    {
+        suspendForHide();
+        return result;
+    }
+    if (type == QEvent::Show)
+    {
+        suspended_ = false;
+        const auto generation = generation_;
+        QTimer::singleShot(0, this,
+                           [this, generation]
+                           {
+                               if (generation_ == generation && isVisible())
+                                   resumeAfterShow();
+                           });
+        return result;
+    }
+    if (type == QEvent::ScreenChangeInternal || type == QEvent::ContentsRectChange
 #if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
         || type == QEvent::DevicePixelRatioChange
 #endif

@@ -30,6 +30,11 @@ if(ASTER_BUILD_GUI)
     add_subdirectory(aster/gui)
 endif()
 
+option(ASTER_BUILD_GALLERY "Build the ImageBox gallery application" ON)
+if(ASTER_BUILD_GUI AND ASTER_BUILD_GALLERY)
+    add_subdirectory(examples/gallery)
+endif()
+
 # Compatibility build target; new consumers link aster::cache or aster::gui.
 add_custom_target(aster DEPENDS aster_cache)
 
@@ -57,6 +62,10 @@ if(BUILD_TESTING)
     if(ASTER_BUILD_QT_NETWORK)
         target_link_libraries(aster_tests PRIVATE aster::network)
         target_compile_definitions(aster_tests PRIVATE ASTER_TEST_QT_NETWORK)
+        option(ASTER_BUILD_HTTP_TESTS "Build Python-backed HTTP integration tests" ON)
+        if(ASTER_BUILD_GUI AND ASTER_BUILD_HTTP_TESTS)
+            add_subdirectory(tests/http_server)
+        endif()
     endif()
     add_test(NAME aster_tests COMMAND aster_tests)
     set_tests_properties(aster_tests PROPERTIES TIMEOUT 120)

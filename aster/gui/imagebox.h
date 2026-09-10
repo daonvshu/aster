@@ -34,6 +34,14 @@ enum class ImageTransition
 };
 Q_ENUM_NS(ImageTransition)
 
+enum class OffscreenPolicy
+{
+    Keep,
+    ReleaseHandle,
+    ReleaseImage
+};
+Q_ENUM_NS(OffscreenPolicy)
+
 namespace detail
 {
 class ImageBoxPresentation;
@@ -44,6 +52,8 @@ class ImageBox : public QWidget
     Q_OBJECT
     Q_PROPERTY(QString source READ source WRITE setSource NOTIFY sourceChanged)
     Q_PROPERTY(aster::gui::ImageBoxState state READ state NOTIFY stateChanged)
+    Q_PROPERTY(
+        qreal cornerRadius READ cornerRadius WRITE setCornerRadius NOTIFY cornerRadiusChanged)
 
 public:
     explicit ImageBox(QWidget* parent = nullptr);
@@ -58,6 +68,8 @@ public:
     QString errorString() const;
     ImageFit fit() const;
     void setFit(ImageFit fit);
+    qreal cornerRadius() const;
+    void setCornerRadius(qreal radius);
     ImageScaleAlgorithm scaleAlgorithm() const;
     void setScaleAlgorithm(ImageScaleAlgorithm algorithm);
     int resizeDebounceInterval() const;
@@ -81,6 +93,8 @@ public:
     int transitionDuration() const;
     bool isTransitionRunning() const;
     qreal transitionProgress() const;
+    void setOffscreenPolicy(OffscreenPolicy policy);
+    OffscreenPolicy offscreenPolicy() const;
 
 public Q_SLOTS:
     void setSource(const QString& source);
@@ -89,6 +103,7 @@ public Q_SLOTS:
 
 Q_SIGNALS:
     void sourceChanged(const QString& source);
+    void cornerRadiusChanged(qreal radius);
     void stateChanged(aster::gui::ImageBoxState state);
     void loadingStarted();
     void loaded();
@@ -104,8 +119,10 @@ private:
     void invalidateRequest();
     void startRequest();
     void applyResult(quint64 generation, cache::ImageResult result);
-    void setState(ImageBoxState state);
+    void setState(ImageBoxState state, bool queuedNotification = false);
     void scheduleSizeRequest();
+    void suspendForHide();
+    void resumeAfterShow();
 
     QSharedPointer<cache::ImagePipeline> pipeline_;
     QString source_;
@@ -115,11 +132,15 @@ private:
     cache::ImageError error_ = cache::ImageError::None;
     QString errorString_;
     ImageFit fit_ = ImageFit::Contain;
+    qreal cornerRadius_ = 0;
     ImageScaleAlgorithm scaleAlgorithm_ = ImageScaleAlgorithm::QtSmooth;
     QTimer resizeTimer_;
     int targetSizeBucket_ = 1;
     QSize requestedTarget_;
     qreal requestedDpr_ = 0;
+    OffscreenPolicy offscreenPolicy_ = OffscreenPolicy::Keep;
+    bool suspended_ = false;
+    bool resumePending_ = false;
     detail::ImageBoxPresentation* presentation_;
 };
 }

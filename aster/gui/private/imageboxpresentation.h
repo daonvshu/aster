@@ -15,6 +15,7 @@ public:
     explicit ImageBoxPresentation(QWidget& owner);
     QImage image() const;
     void clear();
+    void releaseHandle();
     void accept(cache::ImageResult result, QSize target, ImageFit fit, qreal dpr);
     void paint(QPainter& painter, qreal dpr, ImageFit fit, bool error);
     void finishTransition();
