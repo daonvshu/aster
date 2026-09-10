@@ -9,6 +9,7 @@
 #include <QBuffer>
 #include <QDirIterator>
 #include <QFile>
+#include <QSharedPointer>
 #include <QTemporaryDir>
 #include <QtEndian>
 
@@ -53,7 +54,7 @@ RenderKey key(const QByteArray& nameSpace, int variant = 0)
 
 void exactStatsAndDump()
 {
-    auto clock = std::make_shared<testing::FakeClock>();
+    auto clock = QSharedPointer<testing::FakeClock>::create();
     QImage image(16, 16, QImage::Format_ARGB32);
     image.fill(Qt::red);
     const auto cost = RenderedMemoryCache::costOf(image);
@@ -215,8 +216,8 @@ public:
 
 void diskExceptionFallback()
 {
-    auto network = std::make_shared<Network>();
-    CachedSourceLoader loader(nullptr, std::make_shared<ThrowingDisk>(), network);
+    auto network = QSharedPointer<Network>::create();
+    CachedSourceLoader loader(nullptr, QSharedPointer<ThrowingDisk>::create(), network);
     ImageSource source;
     source.kind = ImageSource::Kind::Network;
     source.url = QUrl("https://test/failure");
@@ -238,7 +239,7 @@ void diskExceptionFallback()
 
 ImageResult request(ImagePipeline& pipeline, const SourceRequest& input)
 {
-    auto promise = std::make_shared<std::promise<ImageResult>>();
+    auto promise = QSharedPointer<std::promise<ImageResult>>::create();
     auto future = promise->get_future();
     auto subscription = pipeline.request(input,
                                          [promise](ImageResult result)
@@ -254,16 +255,17 @@ ImageResult request(ImagePipeline& pipeline, const SourceRequest& input)
 void layeredMaintenance()
 {
     QTemporaryDir dir;
-    auto clock = std::make_shared<testing::FakeClock>();
-    auto raw = std::make_shared<FileDiskCache>(dir.filePath("raw"), 1024 * 1024, 65536, clock);
+    auto clock = QSharedPointer<testing::FakeClock>::create();
+    auto raw =
+        QSharedPointer<FileDiskCache>::create(dir.filePath("raw"), 1024 * 1024, 65536, clock);
     auto backing =
-        std::make_shared<FileDiskCache>(dir.filePath("rendered"), 1024 * 1024, 65536, clock);
-    auto disk = std::make_shared<RenderedDiskCache>(backing);
-    auto encoded = std::make_shared<EncodedMemoryCache>(65536, 65536, clock);
-    auto memory = std::make_shared<RenderedMemoryCache>(65536, clock);
-    auto active = std::make_shared<ActiveResourceStore>(65536, clock);
-    auto network = std::make_shared<Network>();
-    auto loader = std::make_shared<CachedSourceLoader>(encoded, raw, network, clock);
+        QSharedPointer<FileDiskCache>::create(dir.filePath("rendered"), 1024 * 1024, 65536, clock);
+    auto disk = QSharedPointer<RenderedDiskCache>::create(backing);
+    auto encoded = QSharedPointer<EncodedMemoryCache>::create(65536, 65536, clock);
+    auto memory = QSharedPointer<RenderedMemoryCache>::create(65536, clock);
+    auto active = QSharedPointer<ActiveResourceStore>::create(65536, clock);
+    auto network = QSharedPointer<Network>::create();
+    auto loader = QSharedPointer<CachedSourceLoader>::create(encoded, raw, network, clock);
     std::atomic<int> renders{0};
     std::mutex eventMutex;
     std::vector<PipelineEvent> events;
@@ -398,7 +400,7 @@ void maintenanceRaceAndCorruption()
     ENSURE(memory.stats().entryCount == 0 && memory.stats().totalBytes == 0);
 
     QTemporaryDir dir;
-    auto backing = std::make_shared<FileDiskCache>(dir.path(), 65536, 32768);
+    auto backing = QSharedPointer<FileDiskCache>::create(dir.path(), 65536, 32768);
     RenderedDiskCache disk(backing);
     ENSURE(disk.put(render, image));
     const auto storage = disk.storageKey(render);
@@ -436,8 +438,8 @@ void maintenanceRaceAndCorruption()
 
 void drainBoundaries()
 {
-    auto memory = std::make_shared<RenderedMemoryCache>(65536);
-    auto loader = std::make_shared<CachedSourceLoader>(nullptr);
+    auto memory = QSharedPointer<RenderedMemoryCache>::create(65536);
+    auto loader = QSharedPointer<CachedSourceLoader>::create(nullptr);
     std::promise<void> entered, release;
     auto entering = entered.get_future();
     auto gate = release.get_future().share();
@@ -455,7 +457,7 @@ void drainBoundaries()
     SourceRequest input;
     input.source.data = png();
     input.render.physicalTargetSize = QSize(16, 16);
-    auto promise = std::make_shared<std::promise<ImageResult>>();
+    auto promise = QSharedPointer<std::promise<ImageResult>>::create();
     auto future = promise->get_future();
     auto subscription = pipeline.request(input,
                                          [promise](ImageResult result)

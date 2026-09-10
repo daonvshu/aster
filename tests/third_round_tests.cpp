@@ -6,6 +6,7 @@
 #include "aster/cache/testing/fakeclock.h"
 
 #include <QFile>
+#include <QSharedPointer>
 #include <QTemporaryDir>
 
 #include <future>
@@ -44,7 +45,7 @@ QImage image()
 
 ImageResult request(ImagePipeline& pipeline, const SourceRequest& input)
 {
-    auto promise = std::make_shared<std::promise<ImageResult>>();
+    auto promise = QSharedPointer<std::promise<ImageResult>>::create();
     auto future = promise->get_future();
     auto sub = pipeline.request(input,
                                 [promise](auto result)
@@ -58,7 +59,7 @@ ImageResult request(ImagePipeline& pipeline, const SourceRequest& input)
 void diskRoundTrip()
 {
     QTemporaryDir dir;
-    auto disk = std::make_shared<FileDiskCache>(dir.path(), 1024 * 1024, 65536);
+    auto disk = QSharedPointer<FileDiskCache>::create(dir.path(), 1024 * 1024, 65536);
     RenderedDiskCache cache(disk);
     const auto original = image();
     REQUIRE(cache.put(key(), original));
@@ -84,7 +85,7 @@ void diskRoundTrip()
 
 void activeLifecycle()
 {
-    auto clock = std::make_shared<aster::cache::testing::FakeClock>();
+    auto clock = QSharedPointer<aster::cache::testing::FakeClock>::create();
     ActiveResourceStore active(1024 * 1024, clock);
     auto original = image();
     std::vector<ImageHandle> handles;
@@ -132,11 +133,11 @@ void activeLifecycle()
 void pipelineRoundTrip()
 {
     QTemporaryDir dir;
-    auto disk = std::make_shared<FileDiskCache>(dir.path(), 1024 * 1024, 65536);
-    auto renderedDisk = std::make_shared<RenderedDiskCache>(disk);
-    auto active = std::make_shared<ActiveResourceStore>(1024 * 1024);
-    auto memory = std::make_shared<RenderedMemoryCache>(1024 * 1024);
-    auto loader = std::make_shared<CachedSourceLoader>(nullptr);
+    auto disk = QSharedPointer<FileDiskCache>::create(dir.path(), 1024 * 1024, 65536);
+    auto renderedDisk = QSharedPointer<RenderedDiskCache>::create(disk);
+    auto active = QSharedPointer<ActiveResourceStore>::create(1024 * 1024);
+    auto memory = QSharedPointer<RenderedMemoryCache>::create(1024 * 1024);
+    auto loader = QSharedPointer<CachedSourceLoader>::create(nullptr);
     std::atomic<int> renders{0};
     auto renderer = [&](const QByteArray&, const RenderOptions& options, const auto&)
     {

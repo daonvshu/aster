@@ -1,5 +1,7 @@
 #include "aster/cache/service/imageservice.h"
 
+#include <QSharedPointer>
+
 #include <future>
 #include <iostream>
 #include <stdexcept>
@@ -16,12 +18,12 @@ void require(bool condition)
         throw std::runtime_error("ImageService test failed");
 }
 
-ImageResult load(const std::shared_ptr<ImagePipeline>& pipeline)
+ImageResult load(const QSharedPointer<ImagePipeline>& pipeline)
 {
     SourceRequest request;
     request.source.data = "image service test";
     request.render.physicalTargetSize = QSize(16, 16);
-    auto promise = std::make_shared<std::promise<ImageResult>>();
+    auto promise = QSharedPointer<std::promise<ImageResult>>::create();
     auto future = promise->get_future();
     auto subscription = pipeline->request(request,
                                           [promise](ImageResult result)
@@ -59,7 +61,7 @@ void imageServiceTests()
     }
     require(!ImageService::isConfigured());
 
-    auto renders = std::make_shared<std::atomic<int>>(0);
+    auto renders = QSharedPointer<std::atomic<int>>::create(0);
     ImageServiceConfig config;
     config.renderedMemoryBytes = 65536;
     config.encodedMemoryBytes = 8192;
@@ -74,7 +76,7 @@ void imageServiceTests()
     };
 
     auto conflict = config;
-    conflict.sourceLoader = std::make_shared<CachedSourceLoader>(nullptr);
+    conflict.sourceLoader = QSharedPointer<CachedSourceLoader>::create(nullptr);
     try
     {
         ImageService::configure(conflict);

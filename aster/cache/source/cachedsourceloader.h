@@ -4,6 +4,8 @@
 #include "aster/cache/cache/idiskcache.h"
 #include "networkservice.h"
 
+#include <QSharedPointer>
+
 namespace aster::cache
 {
 struct SourceCacheConfig
@@ -18,10 +20,10 @@ struct SourceCacheConfig
 class CachedSourceLoader final : public IImageSourceLoader
 {
 public:
-    CachedSourceLoader(std::shared_ptr<EncodedMemoryCache> encoded,
-                       std::shared_ptr<IDiskCache> disk = {},
-                       std::shared_ptr<INetworkService> network = {},
-                       std::shared_ptr<Clock> clock = std::make_shared<SystemClock>(),
+    CachedSourceLoader(QSharedPointer<EncodedMemoryCache> encoded,
+                       QSharedPointer<IDiskCache> disk = {},
+                       QSharedPointer<INetworkService> network = {},
+                       QSharedPointer<Clock> clock = QSharedPointer<SystemClock>::create(),
                        SourceCacheConfig config = {});
     Result<SourceKey> key(const ImageSource&) const override;
     void trimMemory(bool critical) override;
@@ -34,10 +36,10 @@ private:
     Result<SourcePayload> network(const ImageSource&, const SourceKey&, const SourceLoadOptions&,
                                   const std::atomic<bool>&);
     bool encodedEnabled(ImageSource::Kind) const;
-    std::shared_ptr<EncodedMemoryCache> encoded_;
-    std::shared_ptr<IDiskCache> disk_;
-    std::shared_ptr<INetworkService> network_;
-    std::shared_ptr<Clock> clock_;
+    QSharedPointer<EncodedMemoryCache> encoded_;
+    QSharedPointer<IDiskCache> disk_;
+    QSharedPointer<INetworkService> network_;
+    QSharedPointer<Clock> clock_;
     SourceCacheConfig config_;
     mutable std::mutex metricsMutex_;
     NetworkStats networkStats_;

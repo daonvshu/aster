@@ -8,6 +8,7 @@
 #include <QCoreApplication>
 #include <QDirIterator>
 #include <QFile>
+#include <QSharedPointer>
 #include <QTemporaryDir>
 
 #include <future>
@@ -91,14 +92,16 @@ int run(int iterations, unsigned seed)
 {
     QTemporaryDir directory;
     require(directory.isValid(), "Temporary directory unavailable");
-    auto memory = std::make_shared<RenderedMemoryCache>(32768);
-    auto encoded = std::make_shared<EncodedMemoryCache>(16384, 8192);
-    auto raw = std::make_shared<FileDiskCache>(directory.filePath("raw"), 65536, 8192);
-    auto backing = std::make_shared<FileDiskCache>(directory.filePath("rendered"), 65536, 8192);
-    auto disk = std::make_shared<RenderedDiskCache>(backing);
-    auto active = std::make_shared<ActiveResourceStore>(16384);
-    auto loader = std::make_shared<CachedSourceLoader>(encoded, raw, std::make_shared<Network>());
-    auto callbacks = std::make_shared<std::atomic<int>>(0);
+    auto memory = QSharedPointer<RenderedMemoryCache>::create(32768);
+    auto encoded = QSharedPointer<EncodedMemoryCache>::create(16384, 8192);
+    auto raw = QSharedPointer<FileDiskCache>::create(directory.filePath("raw"), 65536, 8192);
+    auto backing =
+        QSharedPointer<FileDiskCache>::create(directory.filePath("rendered"), 65536, 8192);
+    auto disk = QSharedPointer<RenderedDiskCache>::create(backing);
+    auto active = QSharedPointer<ActiveResourceStore>::create(16384);
+    auto loader =
+        QSharedPointer<CachedSourceLoader>::create(encoded, raw, QSharedPointer<Network>::create());
+    auto callbacks = QSharedPointer<std::atomic<int>>::create(0);
     ImagePipeline pipeline(memory, loader,
                            [](const auto& bytes, const auto& options, const auto& cancelled)
                            {
@@ -135,7 +138,7 @@ int run(int iterations, unsigned seed)
             if (random() % 10 == 0)
                 request.load.cache.write = CacheWritePolicy::NoStore;
 
-            auto promise = std::make_shared<std::promise<ImageResult>>();
+            auto promise = QSharedPointer<std::promise<ImageResult>>::create();
             futures.push_back(promise->get_future());
             subscriptions.push_back(pipeline.request(request,
                                                      [promise, callbacks](ImageResult result)

@@ -2,6 +2,8 @@
 
 #include "aster/cache/cache/renderedmemorycache.h"
 
+#include <QSharedPointer>
+
 #include <mutex>
 #include <stdexcept>
 
@@ -21,7 +23,7 @@ struct ServiceState
 {
     std::mutex mutex;
     Phase phase = Phase::Empty;
-    std::shared_ptr<ImagePipeline> pipeline;
+    QSharedPointer<ImagePipeline> pipeline;
 };
 
 ServiceState& state()
@@ -30,7 +32,7 @@ ServiceState& state()
     return instance;
 }
 
-std::shared_ptr<ImagePipeline> createPipeline(const ImageServiceConfig& config)
+QSharedPointer<ImagePipeline> createPipeline(const ImageServiceConfig& config)
 {
     if (!config.renderer || !config.clock || config.workerCount <= 0 ||
         config.renderedMemoryBytes < 0 || config.encodedMemoryBytes < 0 ||
@@ -41,27 +43,28 @@ std::shared_ptr<ImagePipeline> createPipeline(const ImageServiceConfig& config)
         (config.network || config.sourceDisk || config.encodedMemoryBytes != 0))
         throw std::invalid_argument("Custom source loader owns its source cache configuration");
 
-    auto memory = std::make_shared<RenderedMemoryCache>(config.renderedMemoryBytes, config.clock);
+    auto memory =
+        QSharedPointer<RenderedMemoryCache>::create(config.renderedMemoryBytes, config.clock);
     auto loader = config.sourceLoader;
     if (!loader)
     {
-        std::shared_ptr<EncodedMemoryCache> encoded;
+        QSharedPointer<EncodedMemoryCache> encoded;
         if (config.encodedMemoryBytes > 0)
-            encoded = std::make_shared<EncodedMemoryCache>(
+            encoded = QSharedPointer<EncodedMemoryCache>::create(
                 config.encodedMemoryBytes, config.maxEncodedEntryBytes, config.clock);
 
-        loader = std::make_shared<CachedSourceLoader>(encoded, config.sourceDisk, config.network,
-                                                      config.clock, config.sourceCache);
+        loader = QSharedPointer<CachedSourceLoader>::create(
+            encoded, config.sourceDisk, config.network, config.clock, config.sourceCache);
     }
 
     PipelineResources resources;
     resources.renderedDisk = config.renderedDisk;
     if (config.activeMemoryBytes > 0)
         resources.active =
-            std::make_shared<ActiveResourceStore>(config.activeMemoryBytes, config.clock);
+            QSharedPointer<ActiveResourceStore>::create(config.activeMemoryBytes, config.clock);
 
-    return std::make_shared<ImagePipeline>(memory, loader, config.renderer, config.workerCount,
-                                           config.events, std::move(resources));
+    return QSharedPointer<ImagePipeline>::create(
+        memory, loader, config.renderer, config.workerCount, config.events, std::move(resources));
 }
 }
 
@@ -96,7 +99,7 @@ void ImageService::configure(const ImageServiceConfig& config)
     }
 }
 
-std::shared_ptr<ImagePipeline> ImageService::pipeline()
+QSharedPointer<ImagePipeline> ImageService::pipeline()
 {
     auto& service = state();
     std::lock_guard<std::mutex> lock(service.mutex);
@@ -115,7 +118,7 @@ bool ImageService::isConfigured()
 
 void ImageService::shutdown()
 {
-    std::shared_ptr<ImagePipeline> released;
+    QSharedPointer<ImagePipeline> released;
     auto& service = state();
     {
         std::lock_guard<std::mutex> lock(service.mutex);

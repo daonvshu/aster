@@ -9,6 +9,8 @@
 #include "inflightregistry.h"
 #include "sourcerequest.h"
 
+#include <QSharedPointer>
+
 namespace aster::cache
 {
 struct PipelineEvent
@@ -37,8 +39,8 @@ struct PipelineStats
 
 struct PipelineResources
 {
-    std::shared_ptr<RenderedDiskCache> renderedDisk;
-    std::shared_ptr<ActiveResourceStore> active;
+    QSharedPointer<RenderedDiskCache> renderedDisk;
+    QSharedPointer<ActiveResourceStore> active;
 };
 
 struct ImageCacheStats
@@ -65,8 +67,8 @@ public:
                                                const std::atomic<bool>&)>;
     using Completion = std::function<void(ImageResult)>;
 
-    ImagePipeline(std::shared_ptr<IImageMemoryCache>, SourceTask, Renderer, EventSink = {});
-    ImagePipeline(std::shared_ptr<IImageMemoryCache>, std::shared_ptr<IImageSourceLoader>, Renderer,
+    ImagePipeline(QSharedPointer<IImageMemoryCache>, SourceTask, Renderer, EventSink = {});
+    ImagePipeline(QSharedPointer<IImageMemoryCache>, QSharedPointer<IImageSourceLoader>, Renderer,
                   int workerCount = 4, EventSink = {}, PipelineResources = {});
     ~ImagePipeline();
 
@@ -92,6 +94,6 @@ public:
 private:
     bool invalidate(const CacheSelector&, bool includeSource);
     struct State;
-    std::shared_ptr<State> state_;
+    QSharedPointer<State> state_;
 };
 }

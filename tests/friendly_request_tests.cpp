@@ -7,6 +7,7 @@
 #include <QEventLoop>
 #include <QFile>
 #include <QPointer>
+#include <QSharedPointer>
 #include <QTemporaryDir>
 #include <QThread>
 #include <QTimer>
@@ -108,7 +109,7 @@ void sourceStrings()
                 payload.source == CacheResultSource::LocalFile,
             "Local string source read failed");
 
-    auto encoded = std::make_shared<EncodedMemoryCache>(32768, 8192);
+    auto encoded = QSharedPointer<EncodedMemoryCache>::create(32768, 8192);
     CachedSourceLoader resources(encoded);
     const auto resourceKey = resources.key(*colon.value);
     require(resourceKey && *resourceKey.value == *resources.key(*qrc.value).value,
@@ -135,8 +136,8 @@ void sourceStrings()
 
 void deliveryAndCancellation()
 {
-    auto memory = std::make_shared<RenderedMemoryCache>(32768);
-    auto loader = std::make_shared<CachedSourceLoader>(nullptr);
+    auto memory = QSharedPointer<RenderedMemoryCache>::create(32768);
+    auto loader = QSharedPointer<CachedSourceLoader>::create(nullptr);
     std::atomic<int> renders{0};
     ImagePipeline pipeline(memory, loader,
                            [&](const auto& bytes, const auto&, const auto&)
@@ -196,7 +197,7 @@ void deliveryAndCancellation()
     receiver->moveToThread(&receiverThread);
     QObject::connect(&receiverThread, &QThread::finished, receiver, &QObject::deleteLater);
     receiverThread.start();
-    auto promise = std::make_shared<std::promise<bool>>();
+    auto promise = QSharedPointer<std::promise<bool>>::create();
     auto future = promise->get_future();
     auto* crossThread = pipeline.request(explicitRequest, &owner);
     QObject::connect(
@@ -212,7 +213,7 @@ void deliveryAndCancellation()
     receiverThread.wait();
     require(directResult && ready && future.get(), "Queued ImageResult metatype delivery failed");
 
-    auto callback = std::make_shared<std::promise<ImageResult>>();
+    auto callback = QSharedPointer<std::promise<ImageResult>>::create();
     auto callbackFuture = callback->get_future();
     auto legacy = pipeline.request(QString(":/aster-test/sample.ppm"), options(),
                                    [callback](ImageResult value)
@@ -227,8 +228,8 @@ void deliveryAndCancellation()
 
 void destroyedConsumers()
 {
-    auto memory = std::make_shared<RenderedMemoryCache>(32768);
-    auto loader = std::make_shared<CachedSourceLoader>(nullptr);
+    auto memory = QSharedPointer<RenderedMemoryCache>::create(32768);
+    auto loader = QSharedPointer<CachedSourceLoader>::create(nullptr);
     std::promise<void> release;
     const auto gate = release.get_future().share();
     std::atomic<int> renders{0};

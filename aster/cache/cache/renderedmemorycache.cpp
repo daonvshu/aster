@@ -1,12 +1,14 @@
 #include "renderedmemorycache.h"
 
+#include <QSharedPointer>
+
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
 
 namespace aster::cache
 {
-RenderedMemoryCache::RenderedMemoryCache(qint64 maxBytes, std::shared_ptr<Clock> clock)
+RenderedMemoryCache::RenderedMemoryCache(qint64 maxBytes, QSharedPointer<Clock> clock)
     : clock_(std::move(clock))
 {
     if (!clock_)

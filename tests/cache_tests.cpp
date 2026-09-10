@@ -7,6 +7,7 @@
 
 #include <QCoreApplication>
 #include <QFile>
+#include <QSharedPointer>
 #include <QTemporaryDir>
 
 #include <atomic>
@@ -159,7 +160,7 @@ void keys()
 
 void memory()
 {
-    auto clock = std::make_shared<FakeClock>(100);
+    auto clock = QSharedPointer<FakeClock>::create(100);
     const QImage image = pixels();
     const auto cost = RenderedMemoryCache::costOf(image);
     RenderedMemoryCache cache(cost * 3, clock);
@@ -426,7 +427,7 @@ void pipeline()
 {
     FakeNetwork network;
     EventRecorder recorder;
-    auto cache = std::make_shared<RenderedMemoryCache>(1024 * 1024);
+    auto cache = QSharedPointer<RenderedMemoryCache>::create(1024 * 1024);
     std::atomic<int> renders{0}, success{0}, errors{0};
     ImagePipeline pipeline(
         cache, network.task(),

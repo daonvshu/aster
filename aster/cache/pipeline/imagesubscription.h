@@ -4,8 +4,7 @@
 #include "aster/cache/core/imagetask.h"
 
 #include <QObject>
-
-#include <memory>
+#include <QSharedPointer>
 
 Q_DECLARE_METATYPE(aster::cache::ImageResult)
 
@@ -35,7 +34,7 @@ private:
     void deliver(ImageResult);
 
     struct DeliveryState;
-    std::shared_ptr<DeliveryState> delivery_;
+    QSharedPointer<DeliveryState> delivery_;
     Subscription subscription_;
     bool cancelled_ = false;
     bool finished_ = false;

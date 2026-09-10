@@ -2,9 +2,11 @@
 #include "aster/cache/renderer/imagerenderer.h"
 #include "aster/cache/source/cachedsourceloader.h"
 #include "aster/gui/imagebox.h"
+#include "aster/gui/private/imageboxpresentation.h"
 
 #include <QBuffer>
 #include <QFile>
+#include <QSharedPointer>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -106,11 +108,11 @@ private:
 
 struct ControlledPipeline
 {
-    std::shared_ptr<ControlledLoader> loader = std::make_shared<ControlledLoader>();
-    std::shared_ptr<ActiveResourceStore> active = std::make_shared<ActiveResourceStore>(65536);
-    std::shared_ptr<ImagePipeline> pipeline =
-        std::make_shared<ImagePipeline>(std::make_shared<RenderedMemoryCache>(65536), loader,
-                                        decode, 4, EventSink{}, PipelineResources{nullptr, active});
+    QSharedPointer<ControlledLoader> loader = QSharedPointer<ControlledLoader>::create();
+    QSharedPointer<ActiveResourceStore> active = QSharedPointer<ActiveResourceStore>::create(65536);
+    QSharedPointer<ImagePipeline> pipeline = QSharedPointer<ImagePipeline>::create(
+        QSharedPointer<RenderedMemoryCache>::create(65536), loader, decode, 4, EventSink{},
+        PipelineResources{nullptr, active});
 
     ~ControlledPipeline()
     {
@@ -119,12 +121,12 @@ struct ControlledPipeline
     }
 };
 
-std::shared_ptr<ImagePipeline> normalPipeline(std::shared_ptr<INetworkService> network = {})
+QSharedPointer<ImagePipeline> normalPipeline(QSharedPointer<INetworkService> network = {})
 {
-    return std::make_shared<ImagePipeline>(
-        std::make_shared<RenderedMemoryCache>(65536),
-        std::make_shared<CachedSourceLoader>(std::make_shared<EncodedMemoryCache>(65536, 32768),
-                                             nullptr, network),
+    return QSharedPointer<ImagePipeline>::create(
+        QSharedPointer<RenderedMemoryCache>::create(65536),
+        QSharedPointer<CachedSourceLoader>::create(
+            QSharedPointer<EncodedMemoryCache>::create(65536, 32768), nullptr, network),
         decode);
 }
 
@@ -140,6 +142,133 @@ class ImageBoxTests : public QObject
 
 private Q_SLOTS:
 
+    void presentationOwnership()
+    {
+        auto* box = new ImageBox;
+        QPointer<detail::ImageBoxPresentation> presentation =
+            box->findChild<detail::ImageBoxPresentation*>(QString(), Qt::FindDirectChildrenOnly);
+        QVERIFY(presentation);
+        QCOMPARE(presentation->parent(), box);
+        QSignalSpy destroyed(presentation.data(), &QObject::destroyed);
+        delete box;
+        QVERIFY(presentation.isNull());
+        QCOMPARE(destroyed.count(), 1);
+    }
+
+    void presentationAndTransitions()
+    {
+        ControlledPipeline fixture;
+        ImageBox box;
+        box.resize(8, 8);
+        box.setPipeline(fixture.pipeline);
+        QImage placeholder(8, 8, QImage::Format_RGB32);
+        placeholder.fill(Qt::yellow);
+        QImage error(8, 8, QImage::Format_RGB32);
+        error.fill(Qt::green);
+        box.setPlaceholder(placeholder);
+        box.setErrorImage(error);
+        box.show();
+        auto pixel = [&]
+        {
+            QImage canvas(8, 8, QImage::Format_RGB32);
+            canvas.fill(Qt::black);
+            box.render(&canvas);
+            return canvas.pixelColor(0, 0);
+        };
+        QCOMPARE(pixel(), QColor(Qt::yellow));
+        box.setLoadingIndicatorEnabled(true);
+        box.setSource("https://example.test/a");
+        QVERIFY(box.isLoadingIndicatorActive());
+        box.hide();
+        QVERIFY(!box.isLoadingIndicatorActive());
+        box.show();
+        QVERIFY(box.isLoadingIndicatorActive());
+        fixture.loader->release("/a");
+        QTRY_COMPARE(box.state(), ImageBoxState::Ready);
+        QVERIFY(!box.isLoadingIndicatorActive());
+        QVERIFY(!box.isTransitionRunning());
+        QCOMPARE(pixel(), QColor(Qt::red));
+        flushDeletes();
+        QCOMPARE(fixture.active->stats().entries, qint64(1));
+
+        box.setTransition(ImageTransition::CrossFade);
+        box.setTransitionDuration(1000);
+        box.setSource("https://example.test/b");
+        QVERIFY(!box.isLoadingIndicatorActive());
+        box.setLoadingOverlayEnabled(true);
+        QVERIFY(box.isLoadingIndicatorActive());
+        fixture.loader->release("/b");
+        QTRY_COMPARE(box.state(), ImageBoxState::Ready);
+        QVERIFY(box.isTransitionRunning());
+        flushDeletes();
+        QCOMPARE(fixture.active->stats().entries, qint64(2));
+        QTRY_VERIFY(box.transitionProgress() >= 0.4);
+        const auto progress = box.transitionProgress();
+        const auto blended = pixel();
+        QVERIFY(qAbs(blended.red() - qRound(255 * (1 - progress))) <= 3);
+        QVERIFY(qAbs(blended.blue() - qRound(255 * progress)) <= 3);
+        QVERIFY(blended.green() <= 3);
+        QTRY_VERIFY_WITH_TIMEOUT(!box.isTransitionRunning(), 2000);
+        QCOMPARE(box.transitionProgress(), qreal(1));
+        QCOMPARE(fixture.active->stats().entries, qint64(1));
+        QCOMPARE(pixel(), QColor(Qt::blue));
+
+        fixture.loader->releaseAll();
+        for (auto transition :
+             {ImageTransition::Fade, ImageTransition::CrossFade, ImageTransition::Slide,
+              ImageTransition::Zoom, ImageTransition::FadeZoom})
+        {
+            box.setTransition(transition);
+            box.setTransitionDuration(500);
+            box.setSource(box.source().endsWith("/a") ? "https://example.test/b"
+                                                      : "https://example.test/a");
+            QTRY_COMPARE(box.state(), ImageBoxState::Ready);
+            QVERIFY(box.isTransitionRunning());
+            pixel();
+            box.reload();
+            QTRY_COMPARE(box.state(), ImageBoxState::Ready);
+            box.hide();
+            QVERIFY(!box.isTransitionRunning());
+            flushDeletes();
+            QCOMPARE(fixture.active->stats().entries, qint64(1));
+            box.show();
+        }
+        box.setTransitionDuration(0);
+        box.reload();
+        QTRY_COMPARE(box.state(), ImageBoxState::Ready);
+        QVERIFY(!box.isTransitionRunning());
+        box.setPipeline(normalPipeline());
+        box.setSource(":/missing.png");
+        QTRY_COMPARE(box.state(), ImageBoxState::Error);
+        QVERIFY(!box.isTransitionRunning());
+        QCOMPARE(pixel(), box.image().pixelColor(0, 0));
+        box.setErrorReplacesImage(true);
+        QCOMPARE(pixel(), QColor(Qt::green));
+        box.setSource("");
+        QCOMPARE(pixel(), QColor(Qt::yellow));
+        flushDeletes();
+        QCOMPARE(fixture.active->stats().entries, qint64(0));
+        box.setSource(":/missing.png");
+        QTRY_COMPARE(box.state(), ImageBoxState::Error);
+        QCOMPARE(pixel(), QColor(Qt::green));
+
+        auto* transient = new ImageBox;
+        transient->resize(8, 8);
+        transient->setPipeline(fixture.pipeline);
+        transient->setTransition(ImageTransition::CrossFade);
+        transient->setTransitionDuration(1000);
+        transient->show();
+        transient->setSource("https://example.test/a");
+        QTRY_COMPARE(transient->state(), ImageBoxState::Ready);
+        transient->setSource("https://example.test/b");
+        QTRY_COMPARE(transient->state(), ImageBoxState::Ready);
+        QVERIFY(transient->isTransitionRunning());
+        delete transient;
+        QVERIFY(fixture.pipeline->waitForIdle());
+        flushDeletes();
+        QCOMPARE(fixture.active->stats().entries, qint64(0));
+    }
+
     void dimensionsAlgorithmsAndResize()
     {
         class DprBox : public ImageBox
@@ -154,13 +283,13 @@ private Q_SLOTS:
             }
         };
 
-        auto loader = std::make_shared<ControlledLoader>();
+        auto loader = QSharedPointer<ControlledLoader>::create();
         loader->releaseAll();
         std::mutex mutex;
         QVector<RenderOptions> recorded;
         QThread* renderThread = nullptr;
-        auto pipeline = std::make_shared<ImagePipeline>(
-            std::make_shared<RenderedMemoryCache>(16 * 1024 * 1024), loader,
+        auto pipeline = QSharedPointer<ImagePipeline>::create(
+            QSharedPointer<RenderedMemoryCache>::create(16 * 1024 * 1024), loader,
             [&](const QByteArray& data, const RenderOptions& options,
                 const std::atomic<bool>& token)
             {
@@ -256,7 +385,7 @@ private Q_SLOTS:
 
     void sourcesAndPainting()
     {
-        auto network = std::make_shared<FakeNetwork>();
+        auto network = QSharedPointer<FakeNetwork>::create();
         auto pipeline = normalPipeline(network);
         ImageBox box;
         box.resize(2, 1);

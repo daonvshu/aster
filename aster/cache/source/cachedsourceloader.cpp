@@ -6,6 +6,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QMimeDatabase>
+#include <QSharedPointer>
 
 #include <algorithm>
 #include <limits>
@@ -131,10 +132,10 @@ Result<SourcePayload> deserialize(const DiskEntry& entry, const QDateTime& now)
 }
 }
 
-CachedSourceLoader::CachedSourceLoader(std::shared_ptr<EncodedMemoryCache> encoded,
-                                       std::shared_ptr<IDiskCache> disk,
-                                       std::shared_ptr<INetworkService> network,
-                                       std::shared_ptr<Clock> clock, SourceCacheConfig config)
+CachedSourceLoader::CachedSourceLoader(QSharedPointer<EncodedMemoryCache> encoded,
+                                       QSharedPointer<IDiskCache> disk,
+                                       QSharedPointer<INetworkService> network,
+                                       QSharedPointer<Clock> clock, SourceCacheConfig config)
     : encoded_(std::move(encoded)), disk_(std::move(disk)), network_(std::move(network)),
       clock_(std::move(clock)), config_(std::move(config))
 {

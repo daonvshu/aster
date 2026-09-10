@@ -4,6 +4,7 @@
 #include "iimagememorycache.h"
 
 #include <QHash>
+#include <QSharedPointer>
 
 #include <list>
 #include <mutex>
@@ -13,8 +14,8 @@ namespace aster::cache
 class RenderedMemoryCache final : public IImageMemoryCache
 {
 public:
-    explicit RenderedMemoryCache(qint64 maxBytes,
-                                 std::shared_ptr<Clock> clock = std::make_shared<SystemClock>());
+    explicit RenderedMemoryCache(
+        qint64 maxBytes, QSharedPointer<Clock> clock = QSharedPointer<SystemClock>::create());
 
     ImageResult get(const RenderKey&, bool allowStale = false) override;
     bool put(const RenderKey&, const QImage&, std::optional<QDateTime> expiresAt = {}) override;
@@ -42,7 +43,7 @@ private:
     void erase(Entries::iterator);
     void trimLocked(qint64 targetBytes);
 
-    std::shared_ptr<Clock> clock_;
+    QSharedPointer<Clock> clock_;
     mutable std::mutex mutex_;
     Entries entries_;
     QHash<RenderKey, Entries::iterator> index_;

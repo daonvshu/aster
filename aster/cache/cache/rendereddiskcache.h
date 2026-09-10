@@ -3,6 +3,8 @@
 #include "aster/cache/core/imagekey.h"
 #include "idiskcache.h"
 
+#include <QSharedPointer>
+
 #include <mutex>
 
 namespace aster::cache
@@ -21,7 +23,7 @@ struct RenderedDiskConfig
 class RenderedDiskCache
 {
 public:
-    explicit RenderedDiskCache(std::shared_ptr<IDiskCache>, RenderedDiskConfig = {});
+    explicit RenderedDiskCache(QSharedPointer<IDiskCache>, RenderedDiskConfig = {});
     ImageResult get(const RenderKey&);
     bool put(const RenderKey&, const QImage&);
     bool remove(const RenderKey&);
@@ -31,7 +33,7 @@ public:
 
 private:
     ImageResult read(const RenderKey&);
-    std::shared_ptr<IDiskCache> disk_;
+    QSharedPointer<IDiskCache> disk_;
     RenderedDiskConfig config_;
     mutable std::mutex metricsMutex_;
     DiskStats metrics_;

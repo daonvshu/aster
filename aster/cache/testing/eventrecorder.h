@@ -2,6 +2,8 @@
 
 #include "aster/cache/pipeline/imagepipeline.h"
 
+#include <QSharedPointer>
+
 #include <vector>
 
 namespace aster::cache::testing
@@ -14,7 +16,7 @@ class EventRecorder
         std::vector<PipelineEvent> events;
     };
 
-    std::shared_ptr<State> state_ = std::make_shared<State>();
+    QSharedPointer<State> state_ = QSharedPointer<State>::create();
 
 public:
     EventSink sink() const

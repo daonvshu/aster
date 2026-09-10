@@ -8,6 +8,7 @@
 #ifdef ASTER_TEST_QT_NETWORK
 #include "aster/cache/source/qtnetworkservice.h"
 
+#include <QSharedPointer>
 #include <QTcpServer>
 #include <QTcpSocket>
 #endif
@@ -74,7 +75,7 @@ ImageSource remote()
 
 void encodedTests()
 {
-    auto clock = std::make_shared<FakeClock>();
+    auto clock = QSharedPointer<FakeClock>::create();
     SourcePayload p;
     p.bytes = "abcd";
     const auto cost = EncodedMemoryCache::costOf(p);
@@ -113,7 +114,7 @@ void diskTests()
 {
     QTemporaryDir dir;
     VERIFY(dir.isValid());
-    auto clock = std::make_shared<FakeClock>(1000);
+    auto clock = QSharedPointer<FakeClock>::create(1000);
     DiskEntry entry{"old", {{"type", "test"}}};
     FileDiskCache disk(dir.path(), 1024 * 1024, 1024, clock);
     VERIFY(!disk.stats().indexComplete);
@@ -222,10 +223,10 @@ void sourceTests()
 {
     QTemporaryDir dir;
     VERIFY(dir.isValid());
-    auto clock = std::make_shared<FakeClock>(100000);
-    auto encoded = std::make_shared<EncodedMemoryCache>(65536, 4096, clock);
-    auto disk = std::make_shared<FileDiskCache>(dir.path(), 65536, 4096, clock);
-    auto net = std::make_shared<ScriptedNetwork>();
+    auto clock = QSharedPointer<FakeClock>::create(100000);
+    auto encoded = QSharedPointer<EncodedMemoryCache>::create(65536, 4096, clock);
+    auto disk = QSharedPointer<FileDiskCache>::create(dir.path(), 65536, 4096, clock);
+    auto net = QSharedPointer<ScriptedNetwork>::create();
     CachedSourceLoader loader(encoded, disk, net, clock);
     auto source = remote();
     const auto key = *loader.key(source).value;
@@ -377,7 +378,7 @@ void sourceTests()
 
 ImageResult waitRequest(ImagePipeline& pipeline, const SourceRequest& request)
 {
-    auto promise = std::make_shared<std::promise<ImageResult>>();
+    auto promise = QSharedPointer<std::promise<ImageResult>>::create();
     auto future = promise->get_future();
     auto subscription = pipeline.request(request,
                                          [promise](auto result)
@@ -390,11 +391,11 @@ ImageResult waitRequest(ImagePipeline& pipeline, const SourceRequest& request)
 
 void secondPipelineTests()
 {
-    auto clock = std::make_shared<FakeClock>(100000);
-    auto encoded = std::make_shared<EncodedMemoryCache>(65536, 4096, clock);
-    auto net = std::make_shared<ScriptedNetwork>();
-    auto loader = std::make_shared<CachedSourceLoader>(encoded, nullptr, net, clock);
-    auto rendered = std::make_shared<RenderedMemoryCache>(65536, clock);
+    auto clock = QSharedPointer<FakeClock>::create(100000);
+    auto encoded = QSharedPointer<EncodedMemoryCache>::create(65536, 4096, clock);
+    auto net = QSharedPointer<ScriptedNetwork>::create();
+    auto loader = QSharedPointer<CachedSourceLoader>::create(encoded, nullptr, net, clock);
+    auto rendered = QSharedPointer<RenderedMemoryCache>::create(65536, clock);
     std::atomic<int> renders{0};
     ImagePipeline pipeline(rendered, loader,
                            [&](const QByteArray& data, const RenderOptions& o, const auto&)
@@ -472,12 +473,12 @@ void decodeBudgetTests()
 {
     constexpr qint64 encodedBudget = 65536;
     constexpr qint64 renderedBudget = 256 * 1024;
-    auto encoded = std::make_shared<EncodedMemoryCache>(encodedBudget, 32768);
-    auto rendered = std::make_shared<RenderedMemoryCache>(renderedBudget);
+    auto encoded = QSharedPointer<EncodedMemoryCache>::create(encodedBudget, 32768);
+    auto rendered = QSharedPointer<RenderedMemoryCache>::create(renderedBudget);
     SourceCacheConfig config;
     config.encodedData = true;
-    auto loader = std::make_shared<CachedSourceLoader>(encoded, nullptr, nullptr,
-                                                       std::make_shared<SystemClock>(), config);
+    auto loader = QSharedPointer<CachedSourceLoader>::create(
+        encoded, nullptr, nullptr, QSharedPointer<SystemClock>::create(), config);
     ImagePipeline pipeline(rendered, loader,
                            [](const QByteArray& bytes, const RenderOptions&, const auto&)
                            {
@@ -511,8 +512,8 @@ void decodeBudgetTests()
 
 void workerLifecycleTests()
 {
-    auto loader = std::make_shared<BlockingLoader>();
-    auto cache = std::make_shared<RenderedMemoryCache>(65536);
+    auto loader = QSharedPointer<BlockingLoader>::create();
+    auto cache = QSharedPointer<RenderedMemoryCache>::create(65536);
     auto renderer = [](const QByteArray&, const RenderOptions& o, const auto&)
     {
         QImage image(o.physicalTargetSize, QImage::Format_ARGB32);
@@ -558,9 +559,9 @@ void workerLifecycleTests()
     VERIFY(loader->cancellations == 1);
 
     loader->release = true;
-    auto workerOwned = std::make_shared<std::unique_ptr<ImagePipeline>>(
+    auto workerOwned = QSharedPointer<std::unique_ptr<ImagePipeline>>::create(
         std::make_unique<ImagePipeline>(cache, loader, renderer));
-    auto completed = std::make_shared<std::promise<void>>();
+    auto completed = QSharedPointer<std::promise<void>>::create();
     auto completion = completed->get_future();
     auto handle = (*workerOwned)
                       ->request(request,
@@ -637,9 +638,9 @@ void httpServerTest()
     const auto port = ready.get_future().get();
     VERIFY(port != 0);
     QTemporaryDir dir;
-    auto clock = std::make_shared<FakeClock>(1000);
-    auto disk = std::make_shared<FileDiskCache>(dir.path(), 65536, 4096, clock);
-    auto service = std::make_shared<QtNetworkService>(5000);
+    auto clock = QSharedPointer<FakeClock>::create(1000);
+    auto disk = QSharedPointer<FileDiskCache>::create(dir.path(), 65536, 4096, clock);
+    auto service = QSharedPointer<QtNetworkService>::create(5000);
     CachedSourceLoader loader({}, disk, service, clock);
     auto source = remote();
     source.url = QUrl(QString("http://127.0.0.1:%1/image").arg(port));
@@ -667,7 +668,7 @@ int diskCrashProbe(const QStringList& arguments)
     if (arguments.size() != 4)
         return 2;
     const int stage = arguments[3].toInt();
-    FileDiskCache disk(arguments[2], 1024 * 1024, 1024, std::make_shared<SystemClock>(),
+    FileDiskCache disk(arguments[2], 1024 * 1024, 1024, QSharedPointer<SystemClock>::create(),
                        [stage](auto reached)
                        {
                            if (int(reached) == stage)

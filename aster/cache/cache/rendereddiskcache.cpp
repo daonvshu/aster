@@ -7,13 +7,14 @@
 #include <QDataStream>
 #include <QImageReader>
 #include <QImageWriter>
+#include <QSharedPointer>
 
 #include <cmath>
 #include <stdexcept>
 
 namespace aster::cache
 {
-RenderedDiskCache::RenderedDiskCache(std::shared_ptr<IDiskCache> disk, RenderedDiskConfig config)
+RenderedDiskCache::RenderedDiskCache(QSharedPointer<IDiskCache> disk, RenderedDiskConfig config)
     : disk_(std::move(disk)), config_(std::move(config))
 {
     config_.format = config_.format.toLower();

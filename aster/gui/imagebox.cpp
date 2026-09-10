@@ -1,16 +1,19 @@
 #include "imagebox.h"
 
+#include "private/imageboxpresentation.h"
+
 #include <QEvent>
 #include <QPainter>
+#include <QSharedPointer>
 #include <QThread>
 #include <QTimer>
 
-#include <algorithm>
 #include <stdexcept>
 
 namespace aster::gui
 {
-ImageBox::ImageBox(QWidget* parent) : QWidget(parent)
+ImageBox::ImageBox(QWidget* parent)
+    : QWidget(parent), presentation_(new detail::ImageBoxPresentation(*this))
 {
     qRegisterMetaType<ImageBoxState>("aster::gui::ImageBoxState");
     qRegisterMetaType<cache::ImageError>("aster::cache::ImageError");
@@ -24,7 +27,7 @@ ImageBox::~ImageBox()
     invalidateRequest();
 }
 
-void ImageBox::setPipeline(std::shared_ptr<cache::ImagePipeline> pipeline)
+void ImageBox::setPipeline(QSharedPointer<cache::ImagePipeline> pipeline)
 {
     Q_ASSERT(QThread::currentThread() == thread());
     if (pipeline_ == pipeline)
@@ -35,7 +38,7 @@ void ImageBox::setPipeline(std::shared_ptr<cache::ImagePipeline> pipeline)
     startRequest();
 }
 
-std::shared_ptr<cache::ImagePipeline> ImageBox::pipeline() const
+QSharedPointer<cache::ImagePipeline> ImageBox::pipeline() const
 {
     return pipeline_;
 }
@@ -52,7 +55,7 @@ ImageBoxState ImageBox::state() const
 
 QImage ImageBox::image() const
 {
-    return currentImage_;
+    return presentation_->image();
 }
 
 cache::ImageError ImageBox::error() const
@@ -89,6 +92,7 @@ void ImageBox::reload()
 
 void ImageBox::invalidateRequest()
 {
+    presentation_->finishTransition();
     resizeTimer_.stop();
     ++generation_;
     if (subscription_)
@@ -109,7 +113,7 @@ void ImageBox::cancelCurrentRequest()
     invalidateRequest();
     error_ = cache::ImageError::None;
     errorString_.clear();
-    setState(currentImage_.isNull() ? ImageBoxState::Empty : ImageBoxState::Ready);
+    setState(presentation_->image().isNull() ? ImageBoxState::Empty : ImageBoxState::Ready);
 }
 
 void ImageBox::startRequest()
@@ -120,8 +124,7 @@ void ImageBox::startRequest()
     if (source_.isEmpty())
     {
         requestedTarget_ = {};
-        currentImage_ = {};
-        currentHandle_.reset();
+        presentation_->clear();
         update();
         setState(ImageBoxState::Empty);
         return;
@@ -132,7 +135,7 @@ void ImageBox::startRequest()
     if (!target)
     {
         requestedTarget_ = {};
-        setState(currentImage_.isNull() ? ImageBoxState::Empty : ImageBoxState::Ready);
+        setState(presentation_->image().isNull() ? ImageBoxState::Empty : ImageBoxState::Ready);
         return;
     }
     requestedTarget_ = *target.value;
@@ -195,10 +198,7 @@ void ImageBox::applyResult(quint64 generation, cache::ImageResult result)
     QPointer<ImageBox> guard(this);
     if (result)
     {
-        currentImage_ = std::move(*result.value);
-        currentTarget_ = requestedTarget_;
-        currentFit_ = fit_;
-        currentHandle_ = std::move(result.handle);
+        presentation_->accept(std::move(result), requestedTarget_, fit_, requestDevicePixelRatio());
         error_ = cache::ImageError::None;
         errorString_.clear();
         update();
@@ -210,7 +210,7 @@ void ImageBox::applyResult(quint64 generation, cache::ImageResult result)
 
     if (result.error == cache::ImageError::Cancelled)
     {
-        setState(currentImage_.isNull() ? ImageBoxState::Empty : ImageBoxState::Ready);
+        setState(presentation_->image().isNull() ? ImageBoxState::Empty : ImageBoxState::Ready);
         return;
     }
 
@@ -227,41 +227,15 @@ void ImageBox::setState(ImageBoxState state)
         return;
 
     state_ = state;
+    presentation_->syncLoadingIndicator(state_ == ImageBoxState::Loading);
+    update();
     Q_EMIT stateChanged(state);
 }
 
 void ImageBox::paintEvent(QPaintEvent*)
 {
-    if (currentImage_.isNull())
-        return;
     QPainter painter(this);
-    painter.setClipRect(contentsRect());
-    QSizeF size = QSizeF(currentImage_.size()) / currentImage_.devicePixelRatio();
-    const auto exactTarget =
-        cache::physicalTargetSize(contentsRect().size(), requestDevicePixelRatio());
-    const bool preview = !exactTarget || currentTarget_ != *exactTarget.value ||
-                         currentFit_ != fit_ ||
-                         currentImage_.devicePixelRatio() != requestDevicePixelRatio();
-    if (preview && fit_ != ImageFit::None)
-    {
-        const auto area = QSizeF(contentsRect().size());
-        if (fit_ == ImageFit::Fill)
-            size = area;
-        else
-        {
-            const qreal sx = area.width() / size.width();
-            const qreal sy = area.height() / size.height();
-            qreal scale = fit_ == ImageFit::Cover ? std::max(sx, sy) : std::min(sx, sy);
-            if (fit_ == ImageFit::ScaleDown)
-                scale = std::min(qreal(1), scale);
-            size *= scale;
-        }
-    }
-    const QRectF destination(
-        QPointF(contentsRect().x() + (contentsRect().width() - size.width()) / 2,
-                contentsRect().y() + (contentsRect().height() - size.height()) / 2),
-        size);
-    painter.drawImage(destination, currentImage_);
+    presentation_->paint(painter, requestDevicePixelRatio(), fit_, state_ == ImageBoxState::Error);
 }
 
 ImageFit ImageBox::fit() const
@@ -345,7 +319,7 @@ void ImageBox::scheduleSizeRequest()
     if (!target)
     {
         requestedTarget_ = {};
-        setState(currentImage_.isNull() ? ImageBoxState::Empty : ImageBoxState::Ready);
+        setState(presentation_->image().isNull() ? ImageBoxState::Empty : ImageBoxState::Ready);
         return;
     }
     resizeTimer_.start();
@@ -365,6 +339,10 @@ bool ImageBox::event(QEvent* event)
     const bool result = QWidget::event(event);
     if (!guard)
         return result;
+    if (type == QEvent::Hide)
+        presentation_->finishTransition();
+    if (type == QEvent::Hide || type == QEvent::Show)
+        presentation_->syncLoadingIndicator(state_ == ImageBoxState::Loading);
     if (type == QEvent::ScreenChangeInternal || type == QEvent::Show ||
         type == QEvent::ContentsRectChange
 #if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
@@ -373,5 +351,90 @@ bool ImageBox::event(QEvent* event)
     )
         scheduleSizeRequest();
     return result;
+}
+
+void ImageBox::setPlaceholder(const QImage& image)
+{
+    presentation_->setPlaceholder(image);
+}
+
+QImage ImageBox::placeholder() const
+{
+    return presentation_->placeholder();
+}
+
+void ImageBox::setErrorImage(const QImage& image)
+{
+    presentation_->setErrorImage(image);
+}
+
+QImage ImageBox::errorImage() const
+{
+    return presentation_->errorImage();
+}
+
+void ImageBox::setErrorReplacesImage(bool enabled)
+{
+    presentation_->setErrorReplacesImage(enabled);
+}
+
+bool ImageBox::errorReplacesImage() const
+{
+    return presentation_->errorReplacesImage();
+}
+
+void ImageBox::setLoadingIndicatorEnabled(bool enabled)
+{
+    presentation_->setLoadingIndicatorEnabled(enabled);
+}
+
+bool ImageBox::loadingIndicatorEnabled() const
+{
+    return presentation_->loadingIndicatorEnabled();
+}
+
+void ImageBox::setLoadingOverlayEnabled(bool enabled)
+{
+    presentation_->setLoadingOverlayEnabled(enabled);
+}
+
+bool ImageBox::loadingOverlayEnabled() const
+{
+    return presentation_->loadingOverlayEnabled();
+}
+
+bool ImageBox::isLoadingIndicatorActive() const
+{
+    return presentation_->isLoadingIndicatorActive();
+}
+
+void ImageBox::setTransition(ImageTransition transition)
+{
+    presentation_->setTransition(transition);
+}
+
+ImageTransition ImageBox::transition() const
+{
+    return presentation_->transition();
+}
+
+void ImageBox::setTransitionDuration(int milliseconds)
+{
+    presentation_->setTransitionDuration(milliseconds);
+}
+
+int ImageBox::transitionDuration() const
+{
+    return presentation_->transitionDuration();
+}
+
+bool ImageBox::isTransitionRunning() const
+{
+    return presentation_->isTransitionRunning();
+}
+
+qreal ImageBox::transitionProgress() const
+{
+    return presentation_->transitionProgress();
 }
 }

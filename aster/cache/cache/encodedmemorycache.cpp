@@ -1,11 +1,13 @@
 #include "encodedmemorycache.h"
 
+#include <QSharedPointer>
+
 #include <algorithm>
 #include <stdexcept>
 
 namespace aster::cache
 {
-EncodedMemoryCache::EncodedMemoryCache(qint64 budget, qint64 maxEntry, std::shared_ptr<Clock> clock)
+EncodedMemoryCache::EncodedMemoryCache(qint64 budget, qint64 maxEntry, QSharedPointer<Clock> clock)
     : maxEntry_(std::max<qint64>(0, maxEntry)), clock_(std::move(clock))
 {
     if (!clock_)

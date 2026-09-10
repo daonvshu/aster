@@ -1,12 +1,15 @@
 #include "activeresourcestore.h"
 
+#include <QSharedPointer>
+#include <QWeakPointer>
+
 #include <algorithm>
 #include <stdexcept>
 
 namespace aster::cache
 {
-ActiveResourceStore::ActiveResourceStore(qint64 budget, std::shared_ptr<Clock> clock)
-    : state_(std::make_shared<State>()), clock_(std::move(clock))
+ActiveResourceStore::ActiveResourceStore(qint64 budget, QSharedPointer<Clock> clock)
+    : state_(QSharedPointer<State>::create()), clock_(std::move(clock))
 {
     if (!clock_)
         throw std::invalid_argument("clock must not be null");
@@ -17,7 +20,8 @@ ImageHandle ActiveResourceStore::find(const RenderKey& key)
 {
     std::lock_guard<std::recursive_mutex> lock(state_->mutex);
     auto it = state_->entries.constFind(key);
-    auto handle = it == state_->entries.cend() ? ImageHandle{} : ImageHandle(it->image.lock());
+    auto handle =
+        it == state_->entries.cend() ? ImageHandle{} : ImageHandle(it->image.toStrongRef());
     if (handle)
         ++state_->stats.hits;
     else
@@ -35,7 +39,7 @@ ImageHandle ActiveResourceStore::acquire(const RenderKey& key, const QImage& ima
     auto old = state->entries.find(key);
     if (old != state->entries.end())
     {
-        if (auto existing = old->image.lock())
+        if (auto existing = old->image.toStrongRef())
             return ImageHandle(std::move(existing));
         state->stats.bytes -= old->cost;
         state->entries.erase(old);
@@ -46,17 +50,17 @@ ImageHandle ActiveResourceStore::acquire(const RenderKey& key, const QImage& ima
     {
         ++state->stats.rejected;
         state->stats.entries = state->entries.size();
-        return ImageHandle(std::make_shared<const QImage>(image));
+        return ImageHandle(QSharedPointer<QImage>::create(image));
     }
 
     const auto generation = ++state->generation;
     // Copy the lightweight Qt image handle, never copy its pixel allocation.
-    auto value = std::shared_ptr<const QImage>(
+    auto value = QSharedPointer<const QImage>(
         new QImage(image),
-        [weak = std::weak_ptr<State>(state), key, generation](const QImage* ptr)
+        [weak = QWeakPointer<State>(state), key, generation](const QImage* ptr)
         {
             delete ptr;
-            if (auto current = weak.lock())
+            if (auto current = weak.toStrongRef())
             {
                 std::lock_guard<std::recursive_mutex> guard(current->mutex);
                 auto it = current->entries.find(key);

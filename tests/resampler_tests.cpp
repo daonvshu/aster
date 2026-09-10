@@ -5,6 +5,7 @@
 #include "reference/picasaresampler.h"
 
 #include <QBuffer>
+#include <QSharedPointer>
 
 #include <future>
 #include <iostream>
@@ -193,7 +194,8 @@ void identityTests()
     pattern(QSize(13, 9)).save(&buffer, "PNG");
     std::atomic<int> renders{0};
     ImagePipeline pipeline(
-        std::make_shared<RenderedMemoryCache>(65536), std::make_shared<CachedSourceLoader>(nullptr),
+        QSharedPointer<RenderedMemoryCache>::create(65536),
+        QSharedPointer<CachedSourceLoader>::create(nullptr),
         [&](const QByteArray& data, const RenderOptions& render, const std::atomic<bool>& token)
         {
             ++renders;

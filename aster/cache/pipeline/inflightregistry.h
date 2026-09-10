@@ -4,10 +4,10 @@
 #include "aster/cache/core/imagetask.h"
 
 #include <QHash>
+#include <QSharedPointer>
 
 #include <atomic>
 #include <functional>
-#include <memory>
 #include <mutex>
 #include <unordered_map>
 #include <vector>
@@ -45,7 +45,7 @@ private:
 
     struct Task
     {
-        std::unordered_map<quint64, std::shared_ptr<Slot>> subscribers;
+        std::unordered_map<quint64, QSharedPointer<Slot>> subscribers;
         CancelAction cancel;
         bool finished = false;
         bool cancelled = false;
@@ -54,12 +54,12 @@ private:
     struct State
     {
         std::mutex mutex;
-        QHash<Key, std::shared_ptr<Task>> tasks;
+        QHash<Key, QSharedPointer<Task>> tasks;
         quint64 nextId = 0;
         bool closed = false;
     };
 
-    std::shared_ptr<State> state_ = std::make_shared<State>();
+    QSharedPointer<State> state_ = QSharedPointer<State>::create();
 
     static void invoke(CancelAction action) noexcept
     {
@@ -73,10 +73,10 @@ private:
         }
     }
 
-    static void complete(const std::shared_ptr<State>& state, const Key& key,
-                         const std::shared_ptr<Task>& task, Result<Value> result)
+    static void complete(const QSharedPointer<State>& state, const Key& key,
+                         const QSharedPointer<Task>& task, Result<Value> result)
     {
-        std::unordered_map<quint64, std::shared_ptr<Slot>> subscribers;
+        std::unordered_map<quint64, QSharedPointer<Slot>> subscribers;
         CancelAction retired;
 
         {
@@ -111,9 +111,9 @@ public:
     Subscription subscribe(const Key& key, Starter starter, Completion callback)
     {
         const auto state = state_;
-        auto slot = std::make_shared<Slot>();
+        auto slot = QSharedPointer<Slot>::create();
         slot->callback = std::move(callback);
-        std::shared_ptr<Task> task;
+        QSharedPointer<Task> task;
         quint64 id = 0;
         bool start = false;
 
@@ -124,7 +124,7 @@ public:
                 auto it = state->tasks.find(key);
                 if (it == state->tasks.end())
                 {
-                    task = std::make_shared<Task>();
+                    task = QSharedPointer<Task>::create();
                     state->tasks.insert(key, task);
                     start = true;
                 }
@@ -206,7 +206,7 @@ public:
 
     void shutdown() noexcept
     {
-        QHash<Key, std::shared_ptr<Task>> tasks;
+        QHash<Key, QSharedPointer<Task>> tasks;
 
         {
             std::lock_guard<std::mutex> lock(state_->mutex);
@@ -221,7 +221,7 @@ public:
 
         for (auto it = tasks.begin(); it != tasks.end(); ++it)
         {
-            std::unordered_map<quint64, std::shared_ptr<Slot>> subscribers;
+            std::unordered_map<quint64, QSharedPointer<Slot>> subscribers;
             CancelAction action;
 
             {

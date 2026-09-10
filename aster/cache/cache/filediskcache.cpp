@@ -8,6 +8,7 @@
 #include <QJsonDocument>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QSharedPointer>
 #include <QtEndian>
 
 #include <algorithm>
@@ -29,7 +30,7 @@ bool cancelled(const std::atomic<bool>* token)
 }
 
 FileDiskCache::FileDiskCache(QString root, qint64 budget, qint64 maxEntry,
-                             std::shared_ptr<Clock> clock, WriteCheckpoint checkpoint,
+                             QSharedPointer<Clock> clock, WriteCheckpoint checkpoint,
                              QString directoryVersion)
     : root_(QDir(root).absoluteFilePath("aster-cache-" + directoryVersion)),
       maxEntry_(std::max<qint64>(0, std::min<qint64>(maxEntry, std::numeric_limits<int>::max() -

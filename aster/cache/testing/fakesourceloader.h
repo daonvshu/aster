@@ -2,8 +2,9 @@
 
 #include "aster/cache/source/sourcetask.h"
 
+#include <QSharedPointer>
+
 #include <atomic>
-#include <memory>
 #include <mutex>
 #include <vector>
 
@@ -18,7 +19,7 @@ class FakeSourceLoader
         std::atomic<int> loads{0}, cancels{0};
     };
 
-    std::shared_ptr<State> state_ = std::make_shared<State>();
+    QSharedPointer<State> state_ = QSharedPointer<State>::create();
 
 public:
     SourceTask task() const
@@ -30,7 +31,7 @@ public:
                 state->pending.push_back(std::move(done));
             }
             ++state->loads;
-            auto cancelled = std::make_shared<std::atomic<bool>>(false);
+            auto cancelled = QSharedPointer<std::atomic<bool>>::create(false);
             return [state, cancelled]
             {
                 if (!cancelled->exchange(true))

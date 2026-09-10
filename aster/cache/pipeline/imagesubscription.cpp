@@ -1,7 +1,9 @@
 #include "imagesubscription.h"
 
 #include <QMetaObject>
+#include <QSharedPointer>
 #include <QThread>
+#include <QWeakPointer>
 
 #include <mutex>
 #include <stdexcept>
@@ -15,7 +17,7 @@ struct ImageSubscription::DeliveryState
 };
 
 ImageSubscription::ImageSubscription(QObject* parent)
-    : QObject(nullptr), delivery_(std::make_shared<DeliveryState>())
+    : QObject(nullptr), delivery_(QSharedPointer<DeliveryState>::create())
 {
     if (parent && parent->thread() != QThread::currentThread())
         throw std::invalid_argument("Subscription parent must belong to the calling thread");
@@ -36,9 +38,9 @@ ImageSubscription::~ImageSubscription()
 
 std::function<void(ImageResult)> ImageSubscription::completion() const
 {
-    return [weak = std::weak_ptr<DeliveryState>(delivery_)](ImageResult result)
+    return [weak = QWeakPointer<DeliveryState>(delivery_)](ImageResult result)
     {
-        if (auto state = weak.lock())
+        if (auto state = weak.toStrongRef())
         {
             std::lock_guard<std::mutex> lock(state->mutex);
             if (auto* target = state->target)

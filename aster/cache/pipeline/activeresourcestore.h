@@ -6,8 +6,9 @@
 #include "aster/cache/core/imagekey.h"
 
 #include <QHash>
+#include <QSharedPointer>
+#include <QWeakPointer>
 
-#include <memory>
 #include <mutex>
 
 namespace aster::cache
@@ -26,8 +27,8 @@ struct ActiveResourceStats
 class ActiveResourceStore
 {
 public:
-    explicit ActiveResourceStore(qint64 maxBytes,
-                                 std::shared_ptr<Clock> clock = std::make_shared<SystemClock>());
+    explicit ActiveResourceStore(
+        qint64 maxBytes, QSharedPointer<Clock> clock = QSharedPointer<SystemClock>::create());
     ImageHandle acquire(const RenderKey&, const QImage&);
     ImageHandle find(const RenderKey&);
     void setMaxCost(qint64);
@@ -37,7 +38,7 @@ public:
 private:
     struct Entry
     {
-        std::weak_ptr<const QImage> image;
+        QWeakPointer<const QImage> image;
         qint64 cost;
         quint64 generation;
         qint64 createdMs;
@@ -51,7 +52,7 @@ private:
         quint64 generation = 0;
     };
 
-    std::shared_ptr<State> state_;
-    std::shared_ptr<Clock> clock_;
+    QSharedPointer<State> state_;
+    QSharedPointer<Clock> clock_;
 };
 }

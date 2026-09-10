@@ -4,6 +4,7 @@
 #include "idiskcache.h"
 
 #include <QHash>
+#include <QSharedPointer>
 
 #include <functional>
 #include <mutex>
@@ -22,7 +23,7 @@ public:
     using WriteCheckpoint = std::function<bool(WriteStage)>;
 
     FileDiskCache(QString root, qint64 budget, qint64 maxEntry,
-                  std::shared_ptr<Clock> clock = std::make_shared<SystemClock>(),
+                  QSharedPointer<Clock> clock = QSharedPointer<SystemClock>::create(),
                   WriteCheckpoint checkpoint = {}, QString directoryVersion = "v1");
     Result<DiskEntry> get(const QByteArray&) override;
     bool put(const QByteArray&, const DiskEntry&) override;
@@ -52,7 +53,7 @@ private:
     void remember(const QByteArray&, qint64 cost, qint64 accessed);
     QString root_;
     qint64 maxEntry_;
-    std::shared_ptr<Clock> clock_;
+    QSharedPointer<Clock> clock_;
     WriteCheckpoint checkpoint_;
     mutable std::mutex mutex_;
     QHash<QByteArray, IndexEntry> index_;

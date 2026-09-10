@@ -1,8 +1,7 @@
 #pragma once
 
 #include <QImage>
-
-#include <memory>
+#include <QSharedPointer>
 
 namespace aster::cache
 {
@@ -27,11 +26,11 @@ public:
     }
 
 private:
-    explicit ImageHandle(std::shared_ptr<const QImage> image) : image_(std::move(image))
+    explicit ImageHandle(QSharedPointer<const QImage> image) : image_(std::move(image))
     {
     }
 
-    std::shared_ptr<const QImage> image_;
+    QSharedPointer<const QImage> image_;
     friend class ActiveResourceStore;
 };
 }

@@ -5,6 +5,7 @@
 #include "iimagememorycache.h"
 
 #include <QHash>
+#include <QSharedPointer>
 
 #include <list>
 #include <mutex>
@@ -15,7 +16,7 @@ class EncodedMemoryCache
 {
 public:
     EncodedMemoryCache(qint64 budget, qint64 maxEntry,
-                       std::shared_ptr<Clock> clock = std::make_shared<SystemClock>());
+                       QSharedPointer<Clock> clock = QSharedPointer<SystemClock>::create());
     Result<SourcePayload> get(const SourceKey&, bool allowStale = false);
     bool put(const SourceKey&, const SourcePayload&);
     bool remove(const SourceKey&);
@@ -42,6 +43,6 @@ private:
     QHash<SourceKey, Entries::iterator> index_;
     CacheStats stats_;
     qint64 maxEntry_;
-    std::shared_ptr<Clock> clock_;
+    QSharedPointer<Clock> clock_;
 };
 }

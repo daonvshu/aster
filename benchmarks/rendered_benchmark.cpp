@@ -1,6 +1,7 @@
 #include "aster/cache/cache/filediskcache.h"
 #include "aster/cache/cache/rendereddiskcache.h"
 
+#include <QSharedPointer>
 #include <QTemporaryDir>
 
 #include <algorithm>
@@ -14,7 +15,7 @@ int renderedBenchmark()
 {
     QTemporaryDir directory;
     auto disk =
-        std::make_shared<FileDiskCache>(directory.path(), 16 * 1024 * 1024, 4 * 1024 * 1024);
+        QSharedPointer<FileDiskCache>::create(directory.path(), 16 * 1024 * 1024, 4 * 1024 * 1024);
     RenderedDiskCache cache(disk);
     RenderOptions options;
     options.physicalTargetSize = QSize(512, 512);

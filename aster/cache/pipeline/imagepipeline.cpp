@@ -5,6 +5,7 @@
 #include <QIODevice>
 #include <QPointer>
 #include <QRunnable>
+#include <QSharedPointer>
 #include <QThread>
 #include <QThreadPool>
 
@@ -67,14 +68,14 @@ void deliver(const ImagePipeline::Completion& callback, ImageResult result) noex
 
 struct ImagePipeline::State
 {
-    std::shared_ptr<IImageMemoryCache> cache;
+    QSharedPointer<IImageMemoryCache> cache;
     SourceTask source;
     Renderer renderer;
     EventSink sink;
     InFlightRegistry<SourceLoadKey, QByteArray> sources;
     InFlightRegistry<RenderTaskKey, QImage> renders;
-    std::shared_ptr<IImageSourceLoader> loader;
-    std::shared_ptr<QThreadPool> workers;
+    QSharedPointer<IImageSourceLoader> loader;
+    QSharedPointer<QThreadPool> workers;
     PipelineResources resources;
     InFlightRegistry<QByteArray, SourcePayload> payloads;
     InFlightRegistry<QByteArray, QImage> loadedRenders;
@@ -94,9 +95,9 @@ struct ImagePipeline::State
     }
 };
 
-ImagePipeline::ImagePipeline(std::shared_ptr<IImageMemoryCache> cache, SourceTask source,
+ImagePipeline::ImagePipeline(QSharedPointer<IImageMemoryCache> cache, SourceTask source,
                              Renderer renderer, EventSink sink)
-    : state_(std::make_shared<State>())
+    : state_(QSharedPointer<State>::create())
 {
     if (!cache || !source || !renderer)
         throw std::invalid_argument("Pipeline dependencies must not be empty");
@@ -172,8 +173,8 @@ Subscription ImagePipeline::request(const ImageRequest& request, Completion call
                 }
             }
 
-            auto cancelled = std::make_shared<std::atomic<bool>>(false);
-            auto sourceSubscription = std::make_shared<Subscription>();
+            auto cancelled = QSharedPointer<std::atomic<bool>>::create(false);
+            auto sourceSubscription = QSharedPointer<Subscription>::create();
             *sourceSubscription = state->sources.subscribe(
                 SourceLoadKey{request.source},
                 [state, request](SourceCompletion loaded)
@@ -245,10 +246,10 @@ PipelineStats ImagePipeline::stats() const
             state_->renders.count() + state_->loadedRenders.count()};
 }
 
-ImagePipeline::ImagePipeline(std::shared_ptr<IImageMemoryCache> cache,
-                             std::shared_ptr<IImageSourceLoader> loader, Renderer renderer,
+ImagePipeline::ImagePipeline(QSharedPointer<IImageMemoryCache> cache,
+                             QSharedPointer<IImageSourceLoader> loader, Renderer renderer,
                              int workerCount, EventSink sink, PipelineResources resources)
-    : state_(std::make_shared<State>())
+    : state_(QSharedPointer<State>::create())
 {
     if (!cache || !loader || !renderer || workerCount <= 0)
         throw std::invalid_argument("Invalid pipeline dependencies");
@@ -258,7 +259,7 @@ ImagePipeline::ImagePipeline(std::shared_ptr<IImageMemoryCache> cache,
     state_->resources = std::move(resources);
     state_->renderer = std::move(renderer);
     state_->sink = std::move(sink);
-    state_->workers = std::make_shared<QThreadPool>();
+    state_->workers = QSharedPointer<QThreadPool>::create();
     state_->workers->setMaxThreadCount(workerCount);
 }
 
@@ -316,13 +317,13 @@ Subscription ImagePipeline::request(const SourceRequest& input, Completion callb
         [state, pool, request, sourceKey = *source.value, sourceTask,
          key](auto done) -> CancelAction
         {
-            auto token = std::make_shared<std::atomic<bool>>(false);
-            auto subscription = std::make_shared<Subscription>();
+            auto token = QSharedPointer<std::atomic<bool>>::create(false);
+            auto subscription = QSharedPointer<Subscription>::create();
             *subscription = state->payloads.subscribe(
                 sourceTask,
                 [state, pool, request, sourceKey](auto completed) -> CancelAction
                 {
-                    auto cancelled = std::make_shared<std::atomic<bool>>(false);
+                    auto cancelled = QSharedPointer<std::atomic<bool>>::create(false);
                     auto loader = state->loader;
                     state->event(PipelineEvent::Kind::SourceStarted, sourceKey.digest);
                     pool->start(QRunnable::create(
