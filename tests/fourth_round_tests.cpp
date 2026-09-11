@@ -100,6 +100,10 @@ void boundedDecode()
     ENSURE(!decoder.decode({}, running));
     ENSURE(!decoder.decode(bytes.left(20), running));
 
+    // Default decoding accepts images above the former 16 Mi-pixel / 256 MiB preflight limits.
+    const auto large = decoder.decode(png(QSize(4097, 4097)), running);
+    ENSURE(large && large.value->size() == QSize(4097, 4097));
+
     DecodeLimits limits;
     limits.maxEncodedBytes = bytes.size() - 1;
     ENSURE(BoundedImageDecoder(limits).decode(bytes, running).error == ImageError::ResourceLimit);

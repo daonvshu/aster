@@ -199,8 +199,8 @@ ImageResampler::ImageResampler(ResampleLimits limits, ResampleExecution executio
                                KernelEvaluation kernel)
     : limits_(limits), execution_(execution), kernel_(kernel)
 {
-    if (limits.maxSide <= 0 || limits.maxSide > 32768 || limits.maxPixels <= 0 ||
-        limits.maxPixels > 256 * 1024 * 1024 || limits.maxWorkingBytes <= 0)
+    if (limits.maxSide <= 0 || limits.maxSide > 32768 || limits.maxPixels < 0 ||
+        limits.maxWorkingBytes < 0)
         throw std::invalid_argument("Invalid resampling limits");
 }
 
@@ -227,7 +227,8 @@ ImageResult ImageResampler::resize(const QImage& source, const RenderGeometry& g
     auto within = [this](QSize size)
     {
         return size.width() <= limits_.maxSide && size.height() <= limits_.maxSide &&
-               qint64(size.width()) * size.height() <= limits_.maxPixels;
+               (limits_.maxPixels == 0 ||
+                qint64(size.width()) * size.height() <= limits_.maxPixels);
     };
     if (!within(source.size()) || !within(region.size()))
         return ImageResult::failure(ImageError::ResourceLimit);
@@ -250,7 +251,7 @@ ImageResult ImageResampler::resize(const QImage& source, const RenderGeometry& g
                  std::max(horizontalTaps, verticalTaps) * 8;
     const qint64 working =
         qint64(source.sizeInBytes()) + inputBytes + outputBytes + intermediateBytes + tableBytes;
-    if (working > limits_.maxWorkingBytes)
+    if (limits_.maxWorkingBytes > 0 && working > limits_.maxWorkingBytes)
         return ImageResult::failure(ImageError::ResourceLimit, "Resampling memory budget exceeded");
     if (metrics)
         metrics->workingBytes = working;

@@ -172,6 +172,23 @@ void filterTests()
                     .resize(image, {full, tile}, ImageScaleAlgorithm::Lanczos4, running)
                     .error == ImageError::ResourceLimit,
             "Memory bound");
+
+    limits = {};
+    limits.maxPixels = 1;
+    require(ImageResampler(limits)
+                    .resize(image, {full, tile}, ImageScaleAlgorithm::QtSmooth, running)
+                    .error == ImageError::ResourceLimit,
+            "Explicit pixel bound");
+
+    // Exercise both the former pixel limit and the former 256 MiB working-memory limit.
+    QImage large(6000, 6000, QImage::Format_RGB32);
+    large.fill(Qt::red);
+    ResampleMetrics metrics;
+    const auto thumbnail = resampler.resize(large, {QSize(1, 1), QRect(0, 0, 1, 1)},
+                                            ImageScaleAlgorithm::QtFast, running, &metrics);
+    require(thumbnail && thumbnail.value->pixelColor(0, 0) == QColor(Qt::red),
+            "Default resampling accepts large images");
+    require(metrics.workingBytes > 256LL * 1024 * 1024, "Former memory limit exceeded");
 }
 
 void identityTests()
