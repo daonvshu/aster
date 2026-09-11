@@ -35,6 +35,11 @@ if(ASTER_BUILD_GUI AND ASTER_BUILD_GALLERY)
     add_subdirectory(examples/gallery)
 endif()
 
+option(ASTER_BUILD_CACHE_WIDGET "Build the cache-only algorithm comparison example" ON)
+if(ASTER_BUILD_CACHE_WIDGET)
+    add_subdirectory(examples/cache_widget)
+endif()
+
 # Compatibility build target; new consumers link aster::cache or aster::gui.
 add_custom_target(aster DEPENDS aster_cache)
 
