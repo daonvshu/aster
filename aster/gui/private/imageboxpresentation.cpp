@@ -82,6 +82,9 @@ void ImageBoxPresentation::accept(cache::ImageResult result, QSize target, Image
     currentHandle_ = std::move(result.handle);
     if (animate)
     {
+        // Set the initial value before starting the animation so the first paint
+        // cannot render the incoming frame at the completed state.
+        transitionProgress_ = 0;
         animation_.setDuration(transitionDuration_);
         animation_.start();
     }
