@@ -7,10 +7,8 @@
 
 #include <optional>
 
-namespace aster::cache
-{
-struct CacheEntryMeta
-{
+namespace aster::cache {
+struct CacheEntryMeta {
     quint32 schemaVersion = 1;
     qint64 byteSize = 0;
     QDateTime createdAt;
@@ -18,8 +16,7 @@ struct CacheEntryMeta
     std::optional<QDateTime> expiresAt;
 };
 
-struct CacheStats
-{
+struct CacheStats {
     quint64 hits = 0;
     quint64 misses = 0;
     quint64 puts = 0;
@@ -33,8 +30,7 @@ struct CacheStats
     LookupLatency lookup;
 };
 
-class IImageMemoryCache
-{
+class IImageMemoryCache {
 public:
     virtual ~IImageMemoryCache() = default;
 
@@ -48,14 +44,12 @@ public:
 
     virtual CacheStats stats() const = 0;
 
-    virtual bool invalidate(const CacheSelector&)
-    {
+    virtual bool invalidate(const CacheSelector&) {
         return false;
     }
 
-    virtual QVector<CacheDebugEntry> debugDump(int = 100) const
-    {
+    virtual QVector<CacheDebugEntry> debugDump(int = 100) const {
         return {};
     }
 };
-}
+} // namespace aster::cache

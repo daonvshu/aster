@@ -9,15 +9,12 @@ class QCheckBox;
 class QLabel;
 class QLineEdit;
 
-namespace aster::gallery
-{
-class GalleryWindow : public QMainWindow
-{
+namespace aster::gallery {
+class GalleryWindow : public QMainWindow {
     Q_OBJECT
 
 public:
-    explicit GalleryWindow(QSharedPointer<cache::ImagePipeline> pipeline,
-                           QWidget* parent = nullptr);
+    explicit GalleryWindow(QSharedPointer<cache::ImagePipeline> pipeline, QWidget* parent = nullptr);
     void openFolder(const QString& path);
 
 private:
@@ -27,4 +24,4 @@ private:
     QCheckBox* recursive_;
     QLabel* message_;
 };
-}
+} // namespace aster::gallery

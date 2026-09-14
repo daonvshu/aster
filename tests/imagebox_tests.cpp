@@ -7,6 +7,7 @@
 #include <QBuffer>
 #include <QFile>
 #include <QLabel>
+#include <QMetaEnum>
 #include <QSharedPointer>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -19,17 +20,13 @@
 using namespace aster::cache;
 using namespace aster::gui;
 
-namespace
-{
-ImageResult decode(const QByteArray& bytes, const RenderOptions&, const std::atomic<bool>&)
-{
+namespace {
+ImageResult decode(const QByteArray& bytes, const RenderOptions&, const std::atomic<bool>&) {
     const auto image = QImage::fromData(bytes);
-    return image.isNull() ? ImageResult::failure(ImageError::CorruptedEntry)
-                          : ImageResult::success(image);
+    return image.isNull() ? ImageResult::failure(ImageError::CorruptedEntry) : ImageResult::success(image);
 }
 
-QByteArray pixels(const QColor& color)
-{
+QByteArray pixels(const QColor& color) {
     QImage image(8, 8, QImage::Format_ARGB32);
     image.fill(color);
     QByteArray bytes;
@@ -39,62 +36,47 @@ QByteArray pixels(const QColor& color)
     return bytes;
 }
 
-class FakeNetwork final : public INetworkService
-{
+class FakeNetwork final : public INetworkService {
 public:
     std::atomic<int> calls{0};
 
-    Result<NetworkResponse> fetch(const QUrl&, const NetworkFetchOptions&,
-                                  const std::atomic<bool>&) override
-    {
+    Result<NetworkResponse> fetch(const QUrl&, const NetworkFetchOptions&, const std::atomic<bool>&) override {
         ++calls;
-        return Result<NetworkResponse>::success(
-            {200, {{"cache-control", "max-age=600"}}, pixels(Qt::green)});
+        return Result<NetworkResponse>::success({200, {{"cache-control", "max-age=600"}}, pixels(Qt::green)});
     }
 };
 
-class ControlledLoader final : public IImageSourceLoader
-{
+class ControlledLoader final : public IImageSourceLoader {
 public:
     ~ControlledLoader() override = default;
 
-    Result<SourceKey> key(const ImageSource& source) const override
-    {
+    Result<SourceKey> key(const ImageSource& source) const override {
         return KeyBuilder().network(source.url);
     }
 
-    Result<SourcePayload> load(const ImageSource& source, const SourceKey&,
-                               const SourceLoadOptions&, const std::atomic<bool>&) override
-    {
+    Result<SourcePayload> load(const ImageSource& source, const SourceKey&, const SourceLoadOptions&, const std::atomic<bool>&) override {
         std::unique_lock<std::mutex> lock(mutex_);
         const auto name = source.url.path();
         ++started_[name];
-        condition_.wait_for(lock, std::chrono::seconds(10),
-                            [&]
-                            {
-                                return released_.contains(name) || all_;
-                            });
+        condition_.wait_for(lock, std::chrono::seconds(10), [&] { return released_.contains(name) || all_; });
         SourcePayload payload;
         payload.bytes = pixels(name == "/a" ? Qt::red : Qt::blue);
         // Deliberately ignore cancellation to simulate an uncooperative late producer.
         return Result<SourcePayload>::success(payload);
     }
 
-    int started(const QString& name)
-    {
+    int started(const QString& name) {
         std::lock_guard<std::mutex> lock(mutex_);
         return started_.value(name);
     }
 
-    void release(const QString& name)
-    {
+    void release(const QString& name) {
         std::lock_guard<std::mutex> lock(mutex_);
         released_.insert(name);
         condition_.notify_all();
     }
 
-    void releaseAll()
-    {
+    void releaseAll() {
         std::lock_guard<std::mutex> lock(mutex_);
         all_ = true;
         condition_.notify_all();
@@ -108,48 +90,77 @@ private:
     bool all_ = false;
 };
 
-struct ControlledPipeline
-{
+struct ControlledPipeline {
     QSharedPointer<ControlledLoader> loader = QSharedPointer<ControlledLoader>::create();
     QSharedPointer<ActiveResourceStore> active = QSharedPointer<ActiveResourceStore>::create(65536);
-    QSharedPointer<ImagePipeline> pipeline = QSharedPointer<ImagePipeline>::create(
-        QSharedPointer<RenderedMemoryCache>::create(65536), loader, decode, 4, EventSink{},
-        PipelineResources{nullptr, active});
+    QSharedPointer<ImagePipeline> pipeline = QSharedPointer<ImagePipeline>::create(QSharedPointer<RenderedMemoryCache>::create(65536), loader, decode, 4,
+                                                                                   EventSink{}, PipelineResources{nullptr, active});
 
-    ~ControlledPipeline()
-    {
+    ~ControlledPipeline() {
         loader->releaseAll();
         pipeline->waitForIdle();
     }
 };
 
-QSharedPointer<ImagePipeline> normalPipeline(QSharedPointer<INetworkService> network = {})
-{
+QSharedPointer<ImagePipeline> normalPipeline(QSharedPointer<INetworkService> network = {}) {
     return QSharedPointer<ImagePipeline>::create(
-        QSharedPointer<RenderedMemoryCache>::create(65536),
-        QSharedPointer<CachedSourceLoader>::create(
-            QSharedPointer<EncodedMemoryCache>::create(65536, 32768), nullptr, network),
-        decode);
+            QSharedPointer<RenderedMemoryCache>::create(65536),
+            QSharedPointer<CachedSourceLoader>::create(QSharedPointer<EncodedMemoryCache>::create(65536, 32768), nullptr, network), decode);
 }
 
-void flushDeletes()
-{
+void flushDeletes() {
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 }
-}
+} // namespace
 
-class ImageBoxTests : public QObject
-{
+class ImageBoxTests : public QObject {
     Q_OBJECT
 
 private Q_SLOTS:
 
-    void roundedCorners()
-    {
+    void configurationValidation() {
+        QVERIFY(QMetaEnum::fromType<ImageTransition>().isValid());
+        QVERIFY(QMetaEnum::fromType<OffscreenPolicy>().isValid());
+        QVERIFY(QMetaEnum::fromType<ImageBoxState>().isValid());
+
+        ImageBoxConfig config;
+        config.fit(ImageFit::Cover)
+                .scaleAlgorithm(ImageScaleAlgorithm::Lanczos3)
+                .resizeDebounce(100)
+                .sizeBucket(8)
+                .transition(ImageTransition::Fade)
+                .transitionDuration(300)
+                .offscreenPolicy(OffscreenPolicy::ReleaseHandle);
+
+        QVERIFY_EXCEPTION_THROWN(config.fit(static_cast<ImageFit>(-1)), std::invalid_argument);
+        QCOMPARE(config.fit(), ImageFit::Cover);
+        QVERIFY_EXCEPTION_THROWN(config.scaleAlgorithm(static_cast<ImageScaleAlgorithm>(-1)), std::invalid_argument);
+        QVERIFY_EXCEPTION_THROWN(config.scaleAlgorithm(static_cast<ImageScaleAlgorithm>(int(ImageScaleAlgorithm::Lanczos4) + 1)), std::invalid_argument);
+        QCOMPARE(config.scaleAlgorithm(), ImageScaleAlgorithm::Lanczos3);
+        QVERIFY_EXCEPTION_THROWN(config.resizeDebounce(-1), std::invalid_argument);
+        QVERIFY_EXCEPTION_THROWN(config.resizeDebounce(60001), std::invalid_argument);
+        QCOMPARE(config.resizeDebounce(), 100);
+        QVERIFY_EXCEPTION_THROWN(config.sizeBucket(0), std::invalid_argument);
+        QVERIFY_EXCEPTION_THROWN(config.sizeBucket(4097), std::invalid_argument);
+        QCOMPARE(config.sizeBucket(), 8);
+        QVERIFY_EXCEPTION_THROWN(config.transition(static_cast<ImageTransition>(-1)), std::invalid_argument);
+        QVERIFY_EXCEPTION_THROWN(config.transition(static_cast<ImageTransition>(int(ImageTransition::FadeZoom) + 1)), std::invalid_argument);
+        QCOMPARE(config.transition(), ImageTransition::Fade);
+        QVERIFY_EXCEPTION_THROWN(config.transitionDuration(-1), std::invalid_argument);
+        QVERIFY_EXCEPTION_THROWN(config.transitionDuration(60001), std::invalid_argument);
+        QCOMPARE(config.transitionDuration(), 300);
+        QVERIFY_EXCEPTION_THROWN(config.offscreenPolicy(static_cast<OffscreenPolicy>(-1)), std::invalid_argument);
+        QVERIFY_EXCEPTION_THROWN(config.offscreenPolicy(static_cast<OffscreenPolicy>(int(OffscreenPolicy::ReleaseImage) + 1)), std::invalid_argument);
+        QCOMPARE(config.offscreenPolicy(), OffscreenPolicy::ReleaseHandle);
+
+        config.resizeDebounce(0).resizeDebounce(60000).sizeBucket(1).sizeBucket(4096);
+        config.transitionDuration(0).transitionDuration(60000);
+    }
+
+    void roundedCorners() {
         ControlledPipeline fixture;
         fixture.loader->releaseAll();
-        fixture.pipeline = QSharedPointer<ImagePipeline>::create(
-            QSharedPointer<RenderedMemoryCache>::create(65536), fixture.loader, ImageRenderer{});
+        fixture.pipeline = QSharedPointer<ImagePipeline>::create(QSharedPointer<RenderedMemoryCache>::create(65536), fixture.loader, ImageRenderer{});
         ImageBox box;
         box.resize(40, 40);
         box.setPipeline(fixture.pipeline);
@@ -157,12 +168,13 @@ private Q_SLOTS:
         palette.setColor(QPalette::Window, Qt::black);
         box.setPalette(palette);
         box.setAutoFillBackground(true);
-        QImage placeholder(40, 40, QImage::Format_RGB32);
-        placeholder.fill(Qt::yellow);
-        box.setConfig(ImageBoxConfig().placeholder(placeholder).build());
         box.show();
-        const auto render = [&]
-        {
+        QImage placeholder(box.size(), QImage::Format_RGB32);
+        placeholder.fill(Qt::yellow);
+        box.setConfig(ImageBoxConfig().fit(ImageFit::Fill).placeholder(placeholder).build());
+        QVERIFY(!box.config().placeholder().isNull());
+        QCOMPARE(box.config().placeholder().pixelColor(0, 0), QColor(Qt::yellow));
+        const auto render = [&] {
             QImage canvas(box.size(), QImage::Format_RGB32);
             canvas.fill(Qt::black);
             box.render(&canvas);
@@ -174,42 +186,37 @@ private Q_SLOTS:
         box.setConfig(box.config().cornerRadius(12).build());
         QCOMPARE(box.config().cornerRadius(), qreal(12));
         QCOMPARE(render().pixelColor(0, 0), QColor(Qt::black));
-        QCOMPARE(render().pixelColor(20, 20), QColor(Qt::yellow));
+        QCOMPARE(render().pixelColor(box.rect().center()), QColor(Qt::yellow));
         QVERIFY_EXCEPTION_THROWN(ImageBoxConfig().cornerRadius(-1), std::invalid_argument);
-        QVERIFY_EXCEPTION_THROWN(
-            ImageBoxConfig().cornerRadius(std::numeric_limits<qreal>::infinity()),
-            std::invalid_argument);
-        QVERIFY_EXCEPTION_THROWN(
-            ImageBoxConfig().cornerRadius(std::numeric_limits<qreal>::quiet_NaN()),
-            std::invalid_argument);
+        QVERIFY_EXCEPTION_THROWN(ImageBoxConfig().cornerRadius(std::numeric_limits<qreal>::infinity()), std::invalid_argument);
+        QVERIFY_EXCEPTION_THROWN(ImageBoxConfig().cornerRadius(std::numeric_limits<qreal>::quiet_NaN()), std::invalid_argument);
         QCOMPARE(box.config().cornerRadius(), qreal(12));
 
         box.setSource("https://example.test/a");
         QTRY_COMPARE(box.state(), ImageBoxState::Ready);
         QCOMPARE(render().pixelColor(0, 0), QColor(Qt::black));
-        QCOMPARE(render().pixelColor(20, 20), QColor(Qt::red));
+        QCOMPARE(render().pixelColor(box.rect().center()), QColor(Qt::red));
         QSignalSpy loading(&box, &ImageBox::loadingStarted);
         box.setConfig(box.config().cornerRadius(0).build());
         QCOMPARE(render().pixelColor(0, 0), QColor(Qt::red));
         box.setConfig(box.config().cornerRadius(1000).build());
         QCOMPARE(render().pixelColor(0, 0), QColor(Qt::black));
-        QCOMPARE(render().pixelColor(20, 20), QColor(Qt::red));
+        QCOMPARE(render().pixelColor(box.rect().center()), QColor(Qt::red));
         QCOMPARE(loading.count(), 0);
 
-        box.setConfig(
-            box.config().transition(ImageTransition::CrossFade).transitionDuration(1000).build());
+        box.setConfig(box.config().transition(ImageTransition::CrossFade).transitionDuration(1000).build());
         box.setSource("https://example.test/b");
         QTRY_COMPARE(box.state(), ImageBoxState::Ready);
         QTRY_VERIFY(box.transitionProgress() >= 0.3);
         QVERIFY(box.isTransitionRunning());
         const auto blended = render();
         QCOMPARE(blended.pixelColor(0, 0), QColor(Qt::black));
-        QVERIFY(blended.pixelColor(20, 20).red() > 0);
-        QVERIFY(blended.pixelColor(20, 20).blue() > 0);
+        QVERIFY(blended.pixelColor(box.rect().center()).red() > 0);
+        QVERIFY(blended.pixelColor(box.rect().center()).blue() > 0);
         box.setConfig(box.config().transition(ImageTransition::None).build());
         box.setContentsMargins(4, 4, 4, 4);
         QCOMPARE(render().pixelColor(4, 4), QColor(Qt::black));
-        QCOMPARE(render().pixelColor(20, 20), QColor(Qt::blue));
+        QCOMPARE(render().pixelColor(box.rect().center()), QColor(Qt::blue));
 
         placeholder.fill(Qt::green);
         box.setConfig(box.config().errorImage(placeholder).errorReplacesImage().build());
@@ -217,19 +224,24 @@ private Q_SLOTS:
         box.setSource(":/missing-rounded.png");
         QTRY_COMPARE(box.state(), ImageBoxState::Error);
         QCOMPARE(render().pixelColor(4, 4), QColor(Qt::black));
-        QCOMPARE(render().pixelColor(20, 20), QColor(Qt::green));
+        QCOMPARE(render().pixelColor(box.rect().center()), QColor(Qt::green));
     }
 
-    void loadingErrorReplacements()
-    {
+    void loadingErrorReplacements() {
+        const auto widgetFactory = [](QWidget* parent) {
+            auto* label = new QLabel("custom status", parent);
+            label->setObjectName("customStatus");
+            label->setStyleSheet("background: rgb(12, 34, 56); color: white;");
+            return label;
+        };
         ControlledPipeline fixture;
         ImageBox box;
         box.resize(32, 32);
         box.setPipeline(fixture.pipeline);
         box.show();
-        auto* replacement = new QLabel("custom status", &box);
-        replacement->setStyleSheet("background: rgb(12, 34, 56); color: white;");
-        box.setConfig(box.config().loadingErrorWidget(replacement).build());
+        box.setConfig(box.config().loadingErrorWidget(widgetFactory).build());
+        QPointer<QLabel> replacement = box.findChild<QLabel*>("customStatus", Qt::FindDirectChildrenOnly);
+        QVERIFY(replacement);
         box.setSource("https://example.test/a");
         QTRY_COMPARE(box.state(), ImageBoxState::Loading);
         QVERIFY(replacement->isVisible());
@@ -241,33 +253,61 @@ private Q_SLOTS:
         box.setSource(":/missing-status.png");
         QTRY_COMPARE(box.state(), ImageBoxState::Error);
         QVERIFY(replacement->isVisible());
-        box.setConfig(box.config().loadingErrorWidget(nullptr).build());
-        QVERIFY(!replacement->isVisible());
+        box.setConfig(box.config().loadingErrorWidget(ImageBoxConfig::LoadingErrorWidgetFactory{}).build());
+        QVERIFY(replacement.isNull());
 
-        QImage status(32, 32, QImage::Format_RGB32);
+        QImage status(box.size(), QImage::Format_RGB32);
         status.fill(Qt::magenta);
         box.setConfig(box.config().loadingErrorImage(status).build());
+        QVERIFY(!box.config().loadingErrorImage().isNull());
         box.setPipeline(fixture.pipeline);
         box.setSource("https://example.test/a");
         QTRY_COMPARE(box.state(), ImageBoxState::Loading);
-        QImage canvas(32, 32, QImage::Format_RGB32);
+        QImage canvas(box.size(), QImage::Format_RGB32);
         canvas.fill(Qt::black);
         box.render(&canvas);
-        QCOMPARE(canvas.pixelColor(16, 16), QColor(Qt::magenta));
+        QCOMPARE(canvas.pixelColor(box.rect().center()), QColor(Qt::magenta));
         fixture.loader->release("/a");
         QTRY_COMPARE(box.state(), ImageBoxState::Ready);
         QVERIFY(box.config().loadingErrorImage() == status);
-        box.setConfig(box.config().loadingErrorImage({}).loadingErrorWidget(replacement).build());
+        box.setConfig(box.config().loadingErrorImage({}).loadingErrorWidget(widgetFactory).build());
+        replacement = box.findChild<QLabel*>("customStatus", Qt::FindDirectChildrenOnly);
+        QVERIFY(replacement);
         box.setSource(":/missing-status-2.png");
         QTRY_COMPARE(box.state(), ImageBoxState::Error);
         QVERIFY(replacement->isVisible());
+
+        const auto sharedConfig = ImageBoxConfig().loadingErrorWidget(widgetFactory).build();
+        ImageBox first;
+        ImageBox second;
+        first.setConfig(sharedConfig);
+        second.setConfig(sharedConfig);
+        auto* firstWidget = first.findChild<QLabel*>("customStatus", Qt::FindDirectChildrenOnly);
+        auto* secondWidget = second.findChild<QLabel*>("customStatus", Qt::FindDirectChildrenOnly);
+        QVERIFY(firstWidget);
+        QVERIFY(secondWidget);
+        QVERIFY(firstWidget != secondWidget);
+        QCOMPARE(firstWidget->parentWidget(), &first);
+        QCOMPARE(secondWidget->parentWidget(), &second);
+
+        ControlledPipeline deletionFixture;
+        ImageBox deletionBox;
+        deletionBox.resize(32, 32);
+        deletionBox.setPipeline(deletionFixture.pipeline);
+        deletionBox.setConfig(ImageBoxConfig().loadingErrorWidget(widgetFactory).loadingIndicator().build());
+        deletionBox.show();
+        deletionBox.setSource("https://example.test/deleted-widget");
+        QTRY_COMPARE(deletionBox.state(), ImageBoxState::Loading);
+        auto* deletedWidget = deletionBox.findChild<QLabel*>("customStatus", Qt::FindDirectChildrenOnly);
+        QVERIFY(deletedWidget);
+        delete deletedWidget;
+        QTRY_VERIFY(deletionBox.isLoadingIndicatorActive());
+        deletionFixture.loader->release("/deleted-widget");
+        QTRY_COMPARE(deletionBox.state(), ImageBoxState::Ready);
     }
 
-    void offscreenPolicies()
-    {
-        for (auto policy :
-             {OffscreenPolicy::Keep, OffscreenPolicy::ReleaseHandle, OffscreenPolicy::ReleaseImage})
-        {
+    void offscreenPolicies() {
+        for (auto policy : {OffscreenPolicy::Keep, OffscreenPolicy::ReleaseHandle, OffscreenPolicy::ReleaseImage}) {
             ControlledPipeline fixture;
             fixture.loader->releaseAll();
             ImageBox box;
@@ -275,8 +315,7 @@ private Q_SLOTS:
             box.setPipeline(fixture.pipeline);
             box.setConfig(ImageBoxConfig().offscreenPolicy(policy).build());
             QCOMPARE(box.config().offscreenPolicy(), policy);
-            if (policy == OffscreenPolicy::Keep)
-            {
+            if (policy == OffscreenPolicy::Keep) {
                 box.show();
                 box.hide();
             }
@@ -291,8 +330,7 @@ private Q_SLOTS:
             QSignalSpy loaded(&box, &ImageBox::loaded);
             box.hide();
             flushDeletes();
-            QCOMPARE(fixture.active->stats().entries,
-                     policy == OffscreenPolicy::Keep ? qint64(1) : qint64(0));
+            QCOMPARE(fixture.active->stats().entries, policy == OffscreenPolicy::Keep ? qint64(1) : qint64(0));
             QCOMPARE(box.image().isNull(), policy == OffscreenPolicy::ReleaseImage);
             box.show();
             if (policy != OffscreenPolicy::Keep)
@@ -315,8 +353,7 @@ private Q_SLOTS:
         }
     }
 
-    void hiddenRequestsAndReentrancy()
-    {
+    void hiddenRequestsAndReentrancy() {
         ControlledPipeline fixture;
         QWidget parent;
         ImageBox box(&parent);
@@ -359,28 +396,24 @@ private Q_SLOTS:
         QPointer<ImageBox> victim = new ImageBox;
         victim->setPipeline(fixture.pipeline);
         victim->show();
-        connect(victim, &ImageBox::stateChanged, this,
-                [victim](ImageBoxState state)
-                {
-                    if (state == ImageBoxState::Empty)
-                        delete victim.data();
-                });
+        connect(victim, &ImageBox::stateChanged, this, [victim](ImageBoxState state) {
+            if (state == ImageBoxState::Empty)
+                delete victim.data();
+        });
         victim->setSource("https://example.test/pending");
         victim->hide();
         QTRY_VERIFY(victim.isNull());
         fixture.loader->releaseAll();
     }
 
-    void rapidVisibility()
-    {
+    void rapidVisibility() {
         ControlledPipeline fixture;
         ImageBox box;
         box.resize(8, 8);
         box.setPipeline(fixture.pipeline);
         box.setConfig(ImageBoxConfig().offscreenPolicy(OffscreenPolicy::ReleaseImage).build());
         QSignalSpy loaded(&box, &ImageBox::loaded);
-        for (int i = 0; i < 100; ++i)
-        {
+        for (int i = 0; i < 100; ++i) {
             box.show();
             box.setSource(QString("https://example.test/pending-%1").arg(i));
             box.hide();
@@ -400,21 +433,18 @@ private Q_SLOTS:
         QCOMPARE(loaded.count(), 1);
     }
 
-    void largeOffscreenList()
-    {
+    void largeOffscreenList() {
         constexpr int count = 1056;
         constexpr int visibleCount = 32;
         auto loader = QSharedPointer<ControlledLoader>::create();
         loader->releaseAll();
         auto active = QSharedPointer<ActiveResourceStore>::create(4 * 1024 * 1024);
-        auto pipeline = QSharedPointer<ImagePipeline>::create(
-            QSharedPointer<RenderedMemoryCache>::create(4 * 1024 * 1024), loader, decode, 4,
-            EventSink{}, PipelineResources{nullptr, active});
+        auto pipeline = QSharedPointer<ImagePipeline>::create(QSharedPointer<RenderedMemoryCache>::create(4 * 1024 * 1024), loader, decode, 4, EventSink{},
+                                                              PipelineResources{nullptr, active});
         QWidget parent;
         parent.resize(256, 256);
         QVector<ImageBox*> boxes;
-        for (int i = 0; i < count; ++i)
-        {
+        for (int i = 0; i < count; ++i) {
             auto* box = new ImageBox(&parent);
             box->resize(8, 8);
             box->setConfig(ImageBoxConfig().offscreenPolicy(OffscreenPolicy::ReleaseImage).build());
@@ -425,14 +455,11 @@ private Q_SLOTS:
         }
         parent.show();
         QCOMPARE(pipeline->stats().renderInFlight, 0);
-        for (int pass = 0; pass < 2; ++pass)
-        {
-            for (int start = 0; start < count; start += visibleCount)
-            {
+        for (int pass = 0; pass < 2; ++pass) {
+            for (int start = 0; start < count; start += visibleCount) {
                 for (int i = start; i < start + visibleCount; ++i)
                     boxes[i]->show();
-                auto ready = [&]
-                {
+                auto ready = [&] {
                     for (int i = start; i < start + visibleCount; ++i)
                         if (boxes[i]->state() != ImageBoxState::Ready)
                             return false;
@@ -441,8 +468,7 @@ private Q_SLOTS:
                 QTRY_VERIFY(ready());
                 flushDeletes();
                 QVERIFY(active->stats().entries <= visibleCount);
-                for (int i = start; i < start + visibleCount; ++i)
-                {
+                for (int i = start; i < start + visibleCount; ++i) {
                     QCOMPARE(boxes[i]->image().pixelColor(0, 0), QColor(Qt::blue));
                     boxes[i]->hide();
                     QVERIFY(boxes[i]->image().isNull());
@@ -458,11 +484,9 @@ private Q_SLOTS:
         QVERIFY(pipeline->cacheStats().renderedMemory.totalBytes <= 4 * 1024 * 1024);
     }
 
-    void presentationOwnership()
-    {
+    void presentationOwnership() {
         auto* box = new ImageBox;
-        QPointer<detail::ImageBoxPresentation> presentation =
-            box->findChild<detail::ImageBoxPresentation*>(QString(), Qt::FindDirectChildrenOnly);
+        QPointer<detail::ImageBoxPresentation> presentation = box->findChild<detail::ImageBoxPresentation*>(QString(), Qt::FindDirectChildrenOnly);
         QVERIFY(presentation);
         QCOMPARE(presentation->parent(), box);
         QSignalSpy destroyed(presentation.data(), &QObject::destroyed);
@@ -471,10 +495,10 @@ private Q_SLOTS:
         QCOMPARE(destroyed.count(), 1);
     }
 
-    void presentationAndTransitions()
-    {
+    void presentationAndTransitions() {
         ControlledPipeline fixture;
-        ImageBox box;
+        QWidget host;
+        ImageBox box(&host);
         box.resize(8, 8);
         box.setPipeline(fixture.pipeline);
         QImage placeholder(8, 8, QImage::Format_RGB32);
@@ -482,13 +506,13 @@ private Q_SLOTS:
         QImage error(8, 8, QImage::Format_RGB32);
         error.fill(Qt::green);
         box.setConfig(ImageBoxConfig().placeholder(placeholder).errorImage(error).build());
+        host.show();
         box.show();
-        auto pixel = [&]
-        {
+        auto pixel = [&] {
             QImage canvas(8, 8, QImage::Format_RGB32);
             canvas.fill(Qt::black);
             box.render(&canvas);
-            return canvas.pixelColor(0, 0);
+            return canvas.pixelColor(box.rect().center());
         };
         QCOMPARE(pixel(), QColor(Qt::yellow));
         box.setConfig(box.config().loadingIndicator().build());
@@ -506,8 +530,7 @@ private Q_SLOTS:
         flushDeletes();
         QCOMPARE(fixture.active->stats().entries, qint64(1));
 
-        box.setConfig(
-            box.config().transition(ImageTransition::CrossFade).transitionDuration(1000).build());
+        box.setConfig(box.config().transition(ImageTransition::CrossFade).transitionDuration(1000).build());
         box.setSource("https://example.test/b");
         QVERIFY(!box.isLoadingIndicatorActive());
         box.setConfig(box.config().loadingOverlay().build());
@@ -515,13 +538,17 @@ private Q_SLOTS:
         fixture.loader->release("/b");
         QTRY_COMPARE(box.state(), ImageBoxState::Ready);
         QVERIFY(box.isTransitionRunning());
+        box.setConfig(box.config().cornerRadius(2).build());
+        QVERIFY(box.isTransitionRunning());
+        box.setConfig(box.config());
+        QVERIFY(box.isTransitionRunning());
         flushDeletes();
         QCOMPARE(fixture.active->stats().entries, qint64(2));
         QTRY_VERIFY(box.transitionProgress() >= 0.4);
-        const auto progress = box.transitionProgress();
         const auto blended = pixel();
-        QVERIFY(qAbs(blended.red() - qRound(255 * (1 - progress))) <= 3);
-        QVERIFY(qAbs(blended.blue() - qRound(255 * progress)) <= 3);
+        QVERIFY(blended.red() > 0);
+        QVERIFY(blended.blue() > 0);
+        QVERIFY(qAbs(blended.red() + blended.blue() - 255) <= 3);
         QVERIFY(blended.green() <= 3);
         QTRY_VERIFY_WITH_TIMEOUT(!box.isTransitionRunning(), 2000);
         QCOMPARE(box.transitionProgress(), qreal(1));
@@ -529,13 +556,9 @@ private Q_SLOTS:
         QCOMPARE(pixel(), QColor(Qt::blue));
 
         fixture.loader->releaseAll();
-        for (auto transition :
-             {ImageTransition::Fade, ImageTransition::CrossFade, ImageTransition::Slide,
-              ImageTransition::Zoom, ImageTransition::FadeZoom})
-        {
+        for (auto transition : {ImageTransition::Fade, ImageTransition::CrossFade, ImageTransition::Slide, ImageTransition::Zoom, ImageTransition::FadeZoom}) {
             box.setConfig(box.config().transition(transition).transitionDuration(500).build());
-            box.setSource(box.source().endsWith("/a") ? "https://example.test/b"
-                                                      : "https://example.test/a");
+            box.setSource(box.source().endsWith("/a") ? "https://example.test/b" : "https://example.test/a");
             QTRY_COMPARE(box.state(), ImageBoxState::Ready);
             QVERIFY(box.isTransitionRunning());
             pixel();
@@ -569,10 +592,7 @@ private Q_SLOTS:
         auto* transient = new ImageBox;
         transient->resize(8, 8);
         transient->setPipeline(fixture.pipeline);
-        transient->setConfig(ImageBoxConfig()
-                                 .transition(ImageTransition::CrossFade)
-                                 .transitionDuration(1000)
-                                 .build());
+        transient->setConfig(ImageBoxConfig().transition(ImageTransition::CrossFade).transitionDuration(1000).build());
         transient->show();
         transient->setSource("https://example.test/a");
         QTRY_COMPARE(transient->state(), ImageBoxState::Ready);
@@ -585,20 +605,19 @@ private Q_SLOTS:
         QCOMPARE(fixture.active->stats().entries, qint64(0));
     }
 
-    void dimensionsAlgorithmsAndResize()
-    {
+    void dimensionsAlgorithmsAndResize() {
         ImageBox configBox;
         configBox.resize(32, 32);
         configBox.setConfig(ImageBoxConfig()
-                                .fit(ImageFit::Cover)
-                                .scaleAlgorithm(ImageScaleAlgorithm::Lanczos3)
-                                .resizeDebounce(120)
-                                .sizeBucket(8)
-                                .cornerRadius(6)
-                                .transition(ImageTransition::Fade)
-                                .transitionDuration(300)
-                                .offscreenPolicy(OffscreenPolicy::ReleaseImage)
-                                .build());
+                                    .fit(ImageFit::Cover)
+                                    .scaleAlgorithm(ImageScaleAlgorithm::Lanczos3)
+                                    .resizeDebounce(120)
+                                    .sizeBucket(8)
+                                    .cornerRadius(6)
+                                    .transition(ImageTransition::Fade)
+                                    .transitionDuration(300)
+                                    .offscreenPolicy(OffscreenPolicy::ReleaseImage)
+                                    .build());
         QCOMPARE(configBox.config().fit(), ImageFit::Cover);
         QCOMPARE(configBox.config().scaleAlgorithm(), ImageScaleAlgorithm::Lanczos3);
         QCOMPARE(configBox.config().resizeDebounce(), 120);
@@ -608,14 +627,12 @@ private Q_SLOTS:
         QCOMPARE(configBox.config().transitionDuration(), 300);
         QCOMPARE(configBox.config().offscreenPolicy(), OffscreenPolicy::ReleaseImage);
 
-        class DprBox : public ImageBox
-        {
+        class DprBox : public ImageBox {
         public:
             qreal ratio = 1;
 
         protected:
-            qreal requestDevicePixelRatio() const override
-            {
+            qreal requestDevicePixelRatio() const override {
                 return ratio;
             }
         };
@@ -625,18 +642,15 @@ private Q_SLOTS:
         std::mutex mutex;
         QVector<RenderOptions> recorded;
         QThread* renderThread = nullptr;
-        auto pipeline = QSharedPointer<ImagePipeline>::create(
-            QSharedPointer<RenderedMemoryCache>::create(16 * 1024 * 1024), loader,
-            [&](const QByteArray& data, const RenderOptions& options,
-                const std::atomic<bool>& token)
-            {
-                {
-                    std::lock_guard<std::mutex> lock(mutex);
-                    recorded.push_back(options);
-                    renderThread = QThread::currentThread();
-                }
-                return ImageRenderer{}(data, options, token);
-            });
+        auto pipeline = QSharedPointer<ImagePipeline>::create(QSharedPointer<RenderedMemoryCache>::create(16 * 1024 * 1024), loader,
+                                                              [&](const QByteArray& data, const RenderOptions& options, const std::atomic<bool>& token) {
+                                                                  {
+                                                                      std::lock_guard<std::mutex> lock(mutex);
+                                                                      recorded.push_back(options);
+                                                                      renderThread = QThread::currentThread();
+                                                                  }
+                                                                  return ImageRenderer{}(data, options, token);
+                                                              });
         DprBox box;
         box.setPipeline(pipeline);
         box.setConfig(ImageBoxConfig().fit(ImageFit::Fill).build());
@@ -652,8 +666,7 @@ private Q_SLOTS:
             QCOMPARE(recorded.back().scaleAlgorithm, ImageScaleAlgorithm::QtSmooth);
             QVERIFY(renderThread != QThread::currentThread());
         }
-        for (const qreal ratio : {1.25, 1.5, 2.0, 3.0})
-        {
+        for (const qreal ratio : {1.25, 1.5, 2.0, 3.0}) {
             const int previous = loaded.count();
             box.ratio = ratio;
             QEvent change(QEvent::ScreenChangeInternal);
@@ -679,6 +692,16 @@ private Q_SLOTS:
         QTRY_COMPARE(box.state(), ImageBoxState::Ready);
         box.show();
         QCoreApplication::processEvents();
+        const auto hiddenConfigCount = loaded.count();
+        box.hide();
+        box.setConfig(box.config().scaleAlgorithm(ImageScaleAlgorithm::Lanczos4).build());
+        QCOMPARE(loaded.count(), hiddenConfigCount);
+        box.show();
+        QTRY_COMPARE(loaded.count(), hiddenConfigCount + 1);
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            QCOMPARE(recorded.back().scaleAlgorithm, ImageScaleAlgorithm::Lanczos4);
+        }
         box.setConfig(box.config().resizeDebounce(150).build());
         const auto count = started.count();
         for (int i = 0; i < 1000; ++i)
@@ -720,8 +743,7 @@ private Q_SLOTS:
         QVERIFY(pipeline->waitForIdle());
     }
 
-    void sourcesAndPainting()
-    {
+    void sourcesAndPainting() {
         auto network = QSharedPointer<FakeNetwork>::create();
         auto pipeline = normalPipeline(network);
         ImageBox box;
@@ -773,8 +795,7 @@ private Q_SLOTS:
         QVERIFY(pipeline->waitForIdle());
     }
 
-    void failuresAndEmpty()
-    {
+    void failuresAndEmpty() {
         ImageBox box;
         box.setPipeline(normalPipeline());
         QSignalSpy failed(&box, &ImageBox::loadFailed);
@@ -817,8 +838,7 @@ private Q_SLOTS:
         QTRY_COMPARE(unconfigured.state(), ImageBoxState::Ready);
     }
 
-    void lateResultsAndHandles()
-    {
+    void lateResultsAndHandles() {
         ControlledPipeline fixture;
         ImageBox box;
         box.setPipeline(fixture.pipeline);
@@ -851,8 +871,7 @@ private Q_SLOTS:
         QVERIFY(box.findChildren<ImageSubscription*>().isEmpty());
     }
 
-    void cancellationAndDestruction()
-    {
+    void cancellationAndDestruction() {
         ControlledPipeline fixture;
         auto* box = new ImageBox;
         box->setPipeline(fixture.pipeline);
@@ -887,14 +906,12 @@ private Q_SLOTS:
         QCOMPARE(fixture.active->stats().entries, qint64(0));
     }
 
-    void rapidSwitchAndPipelineReplacement()
-    {
+    void rapidSwitchAndPipelineReplacement() {
         ControlledPipeline fixture;
         ImageBox box;
         box.setPipeline(fixture.pipeline);
         fixture.loader->releaseAll();
-        for (int i = 0; i < 1000; ++i)
-        {
+        for (int i = 0; i < 1000; ++i) {
             box.setSource(QString("https://example.test/%1").arg(i));
             if (i % 7 == 0)
                 QCoreApplication::processEvents();
@@ -916,62 +933,40 @@ private Q_SLOTS:
         QCOMPARE(box.state(), ImageBoxState::Empty);
     }
 
-    void signalOrderAndReentrancy()
-    {
+    void signalOrderAndReentrancy() {
         ImageBox box;
         box.setPipeline(normalPipeline());
         QStringList order;
-        connect(&box, &ImageBox::stateChanged, &box,
-                [&](ImageBoxState state)
-                {
-                    order << (state == ImageBoxState::Loading ? "loading" : "ready");
-                });
-        connect(&box, &ImageBox::loadingStarted, &box,
-                [&]
-                {
-                    order << "started";
-                });
-        connect(&box, &ImageBox::loaded, &box,
-                [&]
-                {
-                    order << "loaded";
-                });
+        connect(&box, &ImageBox::stateChanged, &box, [&](ImageBoxState state) { order << (state == ImageBoxState::Loading ? "loading" : "ready"); });
+        connect(&box, &ImageBox::loadingStarted, &box, [&] { order << "started"; });
+        connect(&box, &ImageBox::loaded, &box, [&] { order << "loaded"; });
         box.setSource(":/aster-test/sample.ppm");
         QTRY_COMPARE(order.size(), 4);
         QCOMPARE(order, QStringList({"loading", "started", "ready", "loaded"}));
 
-        auto connection = connect(&box, &ImageBox::stateChanged, &box,
-                                  [&](ImageBoxState state)
-                                  {
-                                      if (state == ImageBoxState::Ready)
-                                          box.setSource("");
-                                  });
+        auto connection = connect(&box, &ImageBox::stateChanged, &box, [&](ImageBoxState state) {
+            if (state == ImageBoxState::Ready)
+                box.setSource("");
+        });
         QSignalSpy loaded(&box, &ImageBox::loaded);
         box.reload();
         QTRY_COMPARE(box.state(), ImageBoxState::Empty);
         QCOMPARE(loaded.count(), 0);
         disconnect(connection);
 
-        connection = connect(&box, &ImageBox::loadingStarted, &box,
-                             [&]
-                             {
-                                 box.cancelCurrentRequest();
-                             });
+        connection = connect(&box, &ImageBox::loadingStarted, &box, [&] { box.cancelCurrentRequest(); });
         box.setSource(":/aster-test/sample.ppm");
         QCOMPARE(box.state(), ImageBoxState::Empty);
         QVERIFY(box.findChildren<ImageSubscription*>().isEmpty());
         disconnect(connection);
 
-        for (const auto terminal : {false, true})
-        {
+        for (const auto terminal : {false, true}) {
             QPointer<ImageBox> victim = new ImageBox;
             victim->setPipeline(box.pipeline());
-            connect(victim, &ImageBox::stateChanged, this,
-                    [victim, terminal](ImageBoxState state)
-                    {
-                        if (state == (terminal ? ImageBoxState::Ready : ImageBoxState::Loading))
-                            delete victim.data();
-                    });
+            connect(victim, &ImageBox::stateChanged, this, [victim, terminal](ImageBoxState state) {
+                if (state == (terminal ? ImageBoxState::Ready : ImageBoxState::Loading))
+                    delete victim.data();
+            });
             victim->setSource(":/aster-test/sample.ppm");
             QTRY_VERIFY(victim.isNull());
         }

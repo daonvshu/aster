@@ -15,49 +15,35 @@
 
 using namespace aster::cache;
 
-#define REQUIRE(x)                                                                                 \
-    do                                                                                             \
-    {                                                                                              \
-        if (!(x))                                                                                  \
-            throw std::runtime_error(std::string(__FILE__) + ":" + std::to_string(__LINE__) +      \
-                                     " " #x);                                                      \
+#define REQUIRE(x)                                                                                                                                             \
+    do {                                                                                                                                                       \
+        if (!(x))                                                                                                                                              \
+            throw std::runtime_error(std::string(__FILE__) + ":" + std::to_string(__LINE__) + " " #x);                                                         \
     } while (false)
 
-namespace
-{
-RenderKey key(int n = 0)
-{
+namespace {
+RenderKey key(int n = 0) {
     RenderOptions options;
     options.physicalTargetSize = QSize(32, 32);
-    return *KeyBuilder()
-                .render(*KeyBuilder().network(QUrl(QString("https://test/%1").arg(n))).value,
-                        options)
-                .value;
+    return *KeyBuilder().render(*KeyBuilder().network(QUrl(QString("https://test/%1").arg(n))).value, options).value;
 }
 
-QImage image()
-{
+QImage image() {
     QImage value(32, 32, QImage::Format_ARGB32);
     value.fill(QColor(12, 34, 56, 78));
     value.setDevicePixelRatio(2);
     return value;
 }
 
-ImageResult request(ImagePipeline& pipeline, const SourceRequest& input)
-{
+ImageResult request(ImagePipeline& pipeline, const SourceRequest& input) {
     auto promise = QSharedPointer<std::promise<ImageResult>>::create();
     auto future = promise->get_future();
-    auto sub = pipeline.request(input,
-                                [promise](auto result)
-                                {
-                                    promise->set_value(std::move(result));
-                                });
+    auto sub = pipeline.request(input, [promise](auto result) { promise->set_value(std::move(result)); });
     REQUIRE(future.wait_for(std::chrono::seconds(10)) == std::future_status::ready);
     return future.get();
 }
 
-void diskRoundTrip()
-{
+void diskRoundTrip() {
     QTemporaryDir dir;
     auto disk = QSharedPointer<FileDiskCache>::create(dir.path(), 1024 * 1024, 65536);
     RenderedDiskCache cache(disk);
@@ -83,8 +69,7 @@ void diskRoundTrip()
     REQUIRE(!disk->contains(cache.storageKey(key())));
 }
 
-void activeLifecycle()
-{
+void activeLifecycle() {
     auto clock = QSharedPointer<aster::cache::testing::FakeClock>::create();
     ActiveResourceStore active(1024 * 1024, clock);
     auto original = image();
@@ -116,22 +101,18 @@ void activeLifecycle()
 
     std::vector<std::thread> threads;
     for (int n = 0; n < 8; ++n)
-        threads.emplace_back(
-            [&, n]
-            {
-                for (int i = 0; i < 1000; ++i)
-                {
-                    auto handle = active.acquire(key(n), original);
-                    auto shared = active.find(key(n));
-                }
-            });
+        threads.emplace_back([&, n] {
+            for (int i = 0; i < 1000; ++i) {
+                auto handle = active.acquire(key(n), original);
+                auto shared = active.find(key(n));
+            }
+        });
     for (auto& t : threads)
         t.join();
     REQUIRE(active.stats().entries == 0);
 }
 
-void pipelineRoundTrip()
-{
+void pipelineRoundTrip() {
     QTemporaryDir dir;
     auto disk = QSharedPointer<FileDiskCache>::create(dir.path(), 1024 * 1024, 65536);
     auto renderedDisk = QSharedPointer<RenderedDiskCache>::create(disk);
@@ -139,8 +120,7 @@ void pipelineRoundTrip()
     auto memory = QSharedPointer<RenderedMemoryCache>::create(1024 * 1024);
     auto loader = QSharedPointer<CachedSourceLoader>::create(nullptr);
     std::atomic<int> renders{0};
-    auto renderer = [&](const QByteArray&, const RenderOptions& options, const auto&)
-    {
+    auto renderer = [&](const QByteArray&, const RenderOptions& options, const auto&) {
         ++renders;
         QImage value(options.physicalTargetSize, QImage::Format_ARGB32);
         value.fill(Qt::red);
@@ -230,10 +210,9 @@ void pipelineRoundTrip()
     REQUIRE(request(pipeline, input));
     REQUIRE(renders == count + 1);
 }
-}
+} // namespace
 
-void thirdRoundTests()
-{
+void thirdRoundTests() {
     diskRoundTrip();
     std::cout << "PASS rendered disk round trip and corruption\n";
     activeLifecycle();

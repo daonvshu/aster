@@ -4,43 +4,28 @@
 
 #include <atomic>
 
-namespace aster::cache
-{
-enum class ResampleExecution
-{
-    Automatic,
-    Scalar
-};
+namespace aster::cache {
+enum class ResampleExecution { Automatic, Scalar };
 
-enum class KernelEvaluation
-{
-    Default,
-    Exact,
-    Lut
-};
+enum class KernelEvaluation { Default, Exact, Lut };
 
-struct ResampleLimits
-{
+struct ResampleLimits {
     int maxSide = 16384;
-    qint64 maxPixels = 0;       // Zero disables the pixel-count limit.
+    qint64 maxPixels = 0; // Zero disables the pixel-count limit.
     qint64 maxWorkingBytes = 0; // Zero disables the working-memory limit.
 };
 
-struct ResampleMetrics
-{
+struct ResampleMetrics {
     qint64 workingBytes = 0;
     qint64 weightGenerationNs = 0;
 };
 
-class ImageResampler
-{
+class ImageResampler {
 public:
-    explicit ImageResampler(ResampleLimits limits = {},
-                            ResampleExecution execution = ResampleExecution::Automatic,
+    explicit ImageResampler(ResampleLimits limits = {}, ResampleExecution execution = ResampleExecution::Automatic,
                             KernelEvaluation kernel = KernelEvaluation::Default);
     static bool simdAvailable();
-    ImageResult resize(const QImage& source, const RenderGeometry& geometry,
-                       ImageScaleAlgorithm algorithm, const std::atomic<bool>& cancelled,
+    ImageResult resize(const QImage& source, const RenderGeometry& geometry, ImageScaleAlgorithm algorithm, const std::atomic<bool>& cancelled,
                        ResampleMetrics* metrics = nullptr) const;
 
 private:
@@ -48,4 +33,4 @@ private:
     ResampleExecution execution_;
     KernelEvaluation kernel_;
 };
-}
+} // namespace aster::cache

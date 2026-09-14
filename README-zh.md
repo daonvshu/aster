@@ -116,6 +116,14 @@ box->setConfig(config);
 
 配置类方法的默认值写在 `imageboxconfig.h`：Contain、QtSmooth、75 ms 防抖、bucket 1、无占位/错误替换、无动画、200 ms 动画时长、0 圆角和 Keep 离屏策略。多个 ImageBox 可以复用同一个配置值；公共显示参数变化时，通过 fluent 方法更新配置并统一下发即可。
 
+使用 widget 替换加载和错误内容时通过工厂创建，因此同一配置用于多个 ImageBox 时，每个 ImageBox 都会得到自己独立持有的 widget：
+
+```cpp
+config.loadingErrorWidget([](QWidget* parent) {
+    return new CustomStatusWidget(parent);
+});
+```
+
 ## 示例程序
 
 - `aster_gallery`：演示文件夹浏览、HTTP 测试接口、缓存和 ImageBox。

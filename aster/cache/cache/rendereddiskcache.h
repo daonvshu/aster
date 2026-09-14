@@ -7,10 +7,8 @@
 
 #include <mutex>
 
-namespace aster::cache
-{
-struct RenderedDiskConfig
-{
+namespace aster::cache {
+struct RenderedDiskConfig {
     QByteArray format = "png";
     int quality = -1;
     quint32 encoderVersion = 1;
@@ -20,8 +18,7 @@ struct RenderedDiskConfig
     qint64 maxEncodedBytes = 32 * 1024 * 1024;
 };
 
-class RenderedDiskCache
-{
+class RenderedDiskCache {
 public:
     explicit RenderedDiskCache(QSharedPointer<IDiskCache>, RenderedDiskConfig = {});
     ImageResult get(const RenderKey&);
@@ -38,4 +35,4 @@ private:
     mutable std::mutex metricsMutex_;
     DiskStats metrics_;
 };
-}
+} // namespace aster::cache

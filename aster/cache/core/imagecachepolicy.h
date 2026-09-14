@@ -1,28 +1,13 @@
 #pragma once
 
-namespace aster::cache
-{
-enum class CacheReadPolicy
-{
-    Default,
-    BypassMemory,
-    BypassDisk,
-    CacheOnly,
-    NoCache
-};
+namespace aster::cache {
+enum class CacheReadPolicy { Default, BypassMemory, BypassDisk, CacheOnly, NoCache };
 
-enum class CacheWritePolicy
-{
-    Default,
-    MemoryOnly,
-    DiskOnly,
-    NoStore
-};
+enum class CacheWritePolicy { Default, MemoryOnly, DiskOnly, NoStore };
 
-struct ImageCachePolicy
-{
+struct ImageCachePolicy {
     CacheReadPolicy read = CacheReadPolicy::Default;
     CacheWritePolicy write = CacheWritePolicy::Default;
     bool allowStale = false;
 };
-}
+} // namespace aster::cache

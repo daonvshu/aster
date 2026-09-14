@@ -7,13 +7,11 @@
 #include <QPointer>
 #include <QWidget>
 
-class CacheWidget final : public QWidget
-{
+class CacheWidget final : public QWidget {
     Q_OBJECT
 
 public:
-    explicit CacheWidget(QSharedPointer<aster::cache::ImagePipeline> pipeline,
-                         aster::cache::ImageScaleAlgorithm algorithm, QWidget* parent = nullptr);
+    explicit CacheWidget(QSharedPointer<aster::cache::ImagePipeline> pipeline, aster::cache::ImageScaleAlgorithm algorithm, QWidget* parent = nullptr);
     void setSource(const QString& source);
     void setFit(aster::cache::ImageFit fit);
 

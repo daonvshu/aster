@@ -6,6 +6,7 @@ add_library(aster_gui STATIC
     imageboxvisibility.cpp
     imagebox.h
     imageboxconfig.h
+    imageboxtypes.h
     gui.h
     private/imageboxpresentation.cpp
     private/imageboxpresentation.h

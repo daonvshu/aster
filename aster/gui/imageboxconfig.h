@@ -1,37 +1,23 @@
 #pragma once
 
 #include "aster/cache/core/imagerendergeometry.h"
+#include "aster/gui/imageboxtypes.h"
 
 #include <QImage>
-#include <QPointer>
+#include <QSharedPointer>
+
+#include <functional>
 
 class QWidget;
 
-namespace aster::gui
-{
+namespace aster::gui {
 using ImageFit = cache::ImageFit;
 using ImageScaleAlgorithm = cache::ImageScaleAlgorithm;
 
-enum class ImageTransition
-{
-    None,
-    Fade,
-    CrossFade,
-    Slide,
-    Zoom,
-    FadeZoom
-};
-
-enum class OffscreenPolicy
-{
-    Keep,
-    ReleaseHandle,
-    ReleaseImage
-};
-
-class ImageBoxConfig final
-{
+class ImageBoxConfig final {
 public:
+    using LoadingErrorWidgetFactory = std::function<QWidget*(QWidget*)>;
+
     /**
      * @brief Returns the fit mode. The default is Contain.
      * @return Fit mode.
@@ -84,7 +70,7 @@ public:
      * @brief Returns the loading placeholder. The default is empty.
      * @return Placeholder image.
      */
-    QImage placeholder() const;
+    const QImage& placeholder() const;
 
     /**
      * @brief Sets the loading placeholder. The default is an empty image.
@@ -96,7 +82,7 @@ public:
      * @brief Returns the error image. The default is empty.
      * @return Error image.
      */
-    QImage errorImage() const;
+    const QImage& errorImage() const;
 
     /**
      * @brief Sets the error image. The default is an empty image.
@@ -141,22 +127,22 @@ public:
     ImageBoxConfig& loadingOverlay(bool enabled = true);
 
     /**
-     * @brief Returns the loading and failure replacement widget.
-     * @return Widget or null.
+     * @brief Returns the loading and failure widget factory.
+     * @return Widget factory or an empty function.
      */
-    QWidget* loadingErrorWidget() const;
+    const LoadingErrorWidgetFactory& loadingErrorWidgetFactory() const;
 
     /**
-     * @brief Sets a widget shown during loading and failure. The default is null.
-     * @param widget Replacement widget, parented to ImageBox.
+     * @brief Sets the loading and failure widget factory. The default is empty.
+     * @param factory Factory used by each ImageBox to create its own replacement widget.
      */
-    ImageBoxConfig& loadingErrorWidget(QWidget* widget);
+    ImageBoxConfig& loadingErrorWidget(LoadingErrorWidgetFactory factory);
 
     /**
      * @brief Returns the loading and failure replacement image.
      * @return Replacement image.
      */
-    QImage loadingErrorImage() const;
+    const QImage& loadingErrorImage() const;
 
     /**
      * @brief Sets an image shown during loading and failure. The default is empty.
@@ -229,11 +215,11 @@ private:
     bool errorReplacesImage_ = false;
     bool loadingIndicator_ = false;
     bool loadingOverlay_ = false;
-    QPointer<QWidget> loadingErrorWidget_;
+    QSharedPointer<LoadingErrorWidgetFactory> loadingErrorWidgetFactory_;
     QImage loadingErrorImage_;
     ImageTransition transition_ = ImageTransition::None;
     int transitionDuration_ = 200;
     qreal cornerRadius_ = 0;
     OffscreenPolicy offscreenPolicy_ = OffscreenPolicy::Keep;
 };
-}
+} // namespace aster::gui

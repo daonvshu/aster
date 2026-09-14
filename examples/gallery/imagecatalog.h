@@ -7,10 +7,8 @@
 
 #include <atomic>
 
-namespace aster::gallery
-{
-class ImageCatalog : public QObject
-{
+namespace aster::gallery {
+class ImageCatalog : public QObject {
     Q_OBJECT
 
 public:
@@ -29,4 +27,4 @@ private:
     quint64 generation_ = 0;
     QSharedPointer<std::atomic<bool>> cancelled_;
 };
-}
+} // namespace aster::gallery

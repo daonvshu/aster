@@ -4,10 +4,8 @@
 #include <QFileInfo>
 #include <QRegularExpression>
 
-namespace aster::cache
-{
-Result<ImageSource> ImageSource::fromString(const QString& input, const KeyContext& context)
-{
+namespace aster::cache {
+Result<ImageSource> ImageSource::fromString(const QString& input, const KeyContext& context) {
     using R = Result<ImageSource>;
     if (input.trimmed().isEmpty() || input.contains(QChar('\0')))
         return R::failure(ImageError::InvalidRequest, "Empty or invalid source path");
@@ -15,15 +13,13 @@ Result<ImageSource> ImageSource::fromString(const QString& input, const KeyConte
     ImageSource source;
     source.context = context;
 
-    auto local = [&](const QString& path)
-    {
+    auto local = [&](const QString& path) {
         source.kind = Kind::Local;
         source.url = QUrl::fromLocalFile(QFileInfo(path).absoluteFilePath());
         return R::success(source);
     };
 
-    if (input.startsWith(":/"))
-    {
+    if (input.startsWith(":/")) {
         source.kind = Kind::Resource;
         source.url.setScheme("qrc");
         source.url.setPath(QDir::cleanPath(input.mid(1)));
@@ -41,8 +37,7 @@ Result<ImageSource> ImageSource::fromString(const QString& input, const KeyConte
     if (!url.isValid())
         return R::failure(ImageError::InvalidRequest, "Invalid source URL");
 
-    if (url.scheme() == "http" || url.scheme() == "https")
-    {
+    if (url.scheme() == "http" || url.scheme() == "https") {
         if (url.host().isEmpty())
             return R::failure(ImageError::InvalidRequest, "Missing HTTP host");
 
@@ -52,15 +47,12 @@ Result<ImageSource> ImageSource::fromString(const QString& input, const KeyConte
     }
 
     if (url.hasQuery() || url.hasFragment())
-        return R::failure(ImageError::InvalidRequest,
-                          "File and resource URLs cannot have query or fragment");
+        return R::failure(ImageError::InvalidRequest, "File and resource URLs cannot have query or fragment");
 
-    if (url.isLocalFile() && !url.toLocalFile().isEmpty() && url.userInfo().isEmpty() &&
-        url.port() == -1)
+    if (url.isLocalFile() && !url.toLocalFile().isEmpty() && url.userInfo().isEmpty() && url.port() == -1)
         return local(url.toLocalFile());
 
-    if (url.scheme() == "qrc" && url.authority().isEmpty() && url.path().startsWith('/'))
-    {
+    if (url.scheme() == "qrc" && url.authority().isEmpty() && url.path().startsWith('/')) {
         source.kind = Kind::Resource;
         source.url.setScheme("qrc");
         source.url.setPath(QDir::cleanPath(url.path()));
@@ -69,4 +61,4 @@ Result<ImageSource> ImageSource::fromString(const QString& input, const KeyConte
 
     return R::failure(ImageError::InvalidRequest, "Unsupported source scheme");
 }
-}
+} // namespace aster::cache

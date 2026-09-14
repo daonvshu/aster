@@ -8,17 +8,15 @@
 #include <mutex>
 #include <stdexcept>
 
-namespace aster::cache
-{
-struct ImageSubscription::DeliveryState
-{
+namespace aster::cache {
+struct ImageSubscription::DeliveryState {
     std::mutex mutex;
     ImageSubscription* target = nullptr;
 };
 
 ImageSubscription::ImageSubscription(QObject* parent)
-    : QObject(nullptr), delivery_(QSharedPointer<DeliveryState>::create())
-{
+    : QObject(nullptr)
+    , delivery_(QSharedPointer<DeliveryState>::create()) {
     if (parent && parent->thread() != QThread::currentThread())
         throw std::invalid_argument("Subscription parent must belong to the calling thread");
 
@@ -27,8 +25,7 @@ ImageSubscription::ImageSubscription(QObject* parent)
     qRegisterMetaType<aster::cache::ImageResult>("aster::cache::ImageResult");
 }
 
-ImageSubscription::~ImageSubscription()
-{
+ImageSubscription::~ImageSubscription() {
     {
         std::lock_guard<std::mutex> lock(delivery_->mutex);
         delivery_->target = nullptr;
@@ -36,42 +33,29 @@ ImageSubscription::~ImageSubscription()
     subscription_.cancel();
 }
 
-std::function<void(ImageResult)> ImageSubscription::completion() const
-{
-    return [weak = QWeakPointer<DeliveryState>(delivery_)](ImageResult result)
-    {
-        if (auto state = weak.toStrongRef())
-        {
+std::function<void(ImageResult)> ImageSubscription::completion() const {
+    return [weak = QWeakPointer<DeliveryState>(delivery_)](ImageResult result) {
+        if (auto state = weak.toStrongRef()) {
             std::lock_guard<std::mutex> lock(state->mutex);
-            if (auto* target = state->target)
-            {
+            if (auto* target = state->target) {
                 // Destruction takes the same lock before QObject removes queued calls.
-                QMetaObject::invokeMethod(
-                    target,
-                    [target, result = std::move(result)]() mutable
-                    {
-                        target->deliver(std::move(result));
-                    },
-                    Qt::QueuedConnection);
+                QMetaObject::invokeMethod(target, [target, result = std::move(result)]() mutable { target->deliver(std::move(result)); }, Qt::QueuedConnection);
             }
         }
     };
 }
 
-void ImageSubscription::attach(Subscription subscription)
-{
+void ImageSubscription::attach(Subscription subscription) {
     subscription_ = std::move(subscription);
     if (cancelled_)
         subscription_.cancel();
 }
 
-bool ImageSubscription::isFinished() const
-{
+bool ImageSubscription::isFinished() const {
     return finished_;
 }
 
-void ImageSubscription::cancel()
-{
+void ImageSubscription::cancel() {
     Q_ASSERT(QThread::currentThread() == thread());
     if (finished_ || cancelled_)
         return;
@@ -81,8 +65,7 @@ void ImageSubscription::cancel()
     completion()(ImageResult::failure(ImageError::Cancelled));
 }
 
-void ImageSubscription::deliver(ImageResult result)
-{
+void ImageSubscription::deliver(ImageResult result) {
     if (finished_)
         return;
 
@@ -94,4 +77,4 @@ void ImageSubscription::deliver(ImageResult result)
     deleteLater();
     Q_EMIT finished(std::move(result));
 }
-}
+} // namespace aster::cache

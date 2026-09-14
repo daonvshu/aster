@@ -14,8 +14,7 @@
 #include <QSpinBox>
 #include <QVBoxLayout>
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
     QApplication app(argc, argv);
     aster::cache::ImageServiceConfig config;
     config.renderer = aster::cache::ImageRenderer{};
@@ -65,21 +64,16 @@ int main(int argc, char** argv)
     auto* grid = new QGridLayout;
     grid->setSpacing(12);
     const QList<QPair<QString, aster::cache::ImageScaleAlgorithm>> algorithms = {
-        {"QtFast", aster::cache::ImageScaleAlgorithm::QtFast},
-        {"QtSmooth", aster::cache::ImageScaleAlgorithm::QtSmooth},
-        {"Bilinear", aster::cache::ImageScaleAlgorithm::Bilinear},
-        {"Bicubic", aster::cache::ImageScaleAlgorithm::Bicubic},
-        {"Lanczos3", aster::cache::ImageScaleAlgorithm::Lanczos3},
-        {"Lanczos4", aster::cache::ImageScaleAlgorithm::Lanczos4}};
+            {"QtFast", aster::cache::ImageScaleAlgorithm::QtFast},     {"QtSmooth", aster::cache::ImageScaleAlgorithm::QtSmooth},
+            {"Bilinear", aster::cache::ImageScaleAlgorithm::Bilinear}, {"Bicubic", aster::cache::ImageScaleAlgorithm::Bicubic},
+            {"Lanczos3", aster::cache::ImageScaleAlgorithm::Lanczos3}, {"Lanczos4", aster::cache::ImageScaleAlgorithm::Lanczos4}};
     QList<CacheWidget*> widgets;
-    for (int i = 0; i < algorithms.size(); ++i)
-    {
+    for (int i = 0; i < algorithms.size(); ++i) {
         auto* panel = new QWidget(central);
         auto* panelLayout = new QVBoxLayout(panel);
         auto* label = new QLabel(algorithms[i].first, panel);
         label->setAlignment(Qt::AlignCenter);
-        auto* box =
-            new CacheWidget(aster::cache::ImageService::pipeline(), algorithms[i].second, panel);
+        auto* box = new CacheWidget(aster::cache::ImageService::pipeline(), algorithms[i].second, panel);
         box->setFixedSize(240, 240);
         panelLayout->addWidget(label);
         panelLayout->addWidget(box);
@@ -88,10 +82,8 @@ int main(int argc, char** argv)
     }
     root->addLayout(grid, 1);
     window.setCentralWidget(central);
-    const auto apply = [&]
-    {
-        for (auto* box : widgets)
-        {
+    const auto apply = [&] {
+        for (auto* box : widgets) {
             box->setFixedSize(size->value(), size->value());
             box->setFit(aster::cache::ImageFit(fit->currentData().toInt()));
             box->setSource(source->text().trimmed());
@@ -99,31 +91,22 @@ int main(int argc, char** argv)
     };
     QObject::connect(load, &QPushButton::clicked, &window, apply);
     QObject::connect(source, &QLineEdit::returnPressed, &window, apply);
-    QObject::connect(choose, &QPushButton::clicked, &window,
-                     [&]
-                     {
-                         const auto path =
-                             QFileDialog::getOpenFileName(&window, QStringLiteral("选择图片"));
-                         if (!path.isEmpty())
-                         {
-                             source->setText(path);
-                             apply();
-                         }
-                     });
-    QObject::connect(size, QOverload<int>::of(&QSpinBox::valueChanged), &window,
-                     [&](int)
-                     {
-                         if (!source->text().isEmpty())
-                             apply();
-                     });
-    QObject::connect(fit, QOverload<int>::of(&QComboBox::currentIndexChanged), &window,
-                     [&](int)
-                     {
-                         if (!source->text().isEmpty())
-                             apply();
-                     });
-    if (QCoreApplication::arguments().size() > 1)
-    {
+    QObject::connect(choose, &QPushButton::clicked, &window, [&] {
+        const auto path = QFileDialog::getOpenFileName(&window, QStringLiteral("选择图片"));
+        if (!path.isEmpty()) {
+            source->setText(path);
+            apply();
+        }
+    });
+    QObject::connect(size, QOverload<int>::of(&QSpinBox::valueChanged), &window, [&](int) {
+        if (!source->text().isEmpty())
+            apply();
+    });
+    QObject::connect(fit, QOverload<int>::of(&QComboBox::currentIndexChanged), &window, [&](int) {
+        if (!source->text().isEmpty())
+            apply();
+    });
+    if (QCoreApplication::arguments().size() > 1) {
         source->setText(QCoreApplication::arguments().at(1));
         apply();
     }

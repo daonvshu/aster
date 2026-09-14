@@ -9,13 +9,10 @@
 #include <list>
 #include <mutex>
 
-namespace aster::cache
-{
-class RenderedMemoryCache final : public IImageMemoryCache
-{
+namespace aster::cache {
+class RenderedMemoryCache final : public IImageMemoryCache {
 public:
-    explicit RenderedMemoryCache(
-        qint64 maxBytes, QSharedPointer<Clock> clock = QSharedPointer<SystemClock>::create());
+    explicit RenderedMemoryCache(qint64 maxBytes, QSharedPointer<Clock> clock = QSharedPointer<SystemClock>::create());
 
     ImageResult get(const RenderKey&, bool allowStale = false) override;
     bool put(const RenderKey&, const QImage&, std::optional<QDateTime> expiresAt = {}) override;
@@ -31,8 +28,7 @@ public:
     static qint64 costOf(const QImage&);
 
 private:
-    struct Entry
-    {
+    struct Entry {
         RenderKey key;
         QImage image;
         CacheEntryMeta meta;
@@ -49,4 +45,4 @@ private:
     QHash<RenderKey, Entries::iterator> index_;
     CacheStats stats_;
 };
-}
+} // namespace aster::cache

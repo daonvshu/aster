@@ -2,10 +2,8 @@
 
 #include "iimagesourceloader.h"
 
-namespace aster::cache
-{
-struct NetworkFetchOptions
-{
+namespace aster::cache {
+struct NetworkFetchOptions {
     bool preferCache = true;
     bool reload = false;
     bool cacheOnly = false;
@@ -14,18 +12,15 @@ struct NetworkFetchOptions
     qint64 maxBytes = 32 * 1024 * 1024;
 };
 
-struct NetworkResponse
-{
+struct NetworkResponse {
     int status = 0;
     HttpHeaders headers;
     QByteArray body;
 };
 
-class INetworkService
-{
+class INetworkService {
 public:
     virtual ~INetworkService() = default;
-    virtual Result<NetworkResponse> fetch(const QUrl&, const NetworkFetchOptions&,
-                                          const std::atomic<bool>& cancelled) = 0;
+    virtual Result<NetworkResponse> fetch(const QUrl&, const NetworkFetchOptions&, const std::atomic<bool>& cancelled) = 0;
 };
-}
+} // namespace aster::cache

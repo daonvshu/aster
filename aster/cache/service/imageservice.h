@@ -5,10 +5,8 @@
 
 #include <QSharedPointer>
 
-namespace aster::cache
-{
-struct ImageServiceConfig
-{
+namespace aster::cache {
+struct ImageServiceConfig {
     ImagePipeline::Renderer renderer;
     int workerCount = 4;
     EventSink events;
@@ -26,8 +24,7 @@ struct ImageServiceConfig
     QSharedPointer<IImageSourceLoader> sourceLoader;
 };
 
-class ImageService final
-{
+class ImageService final {
 public:
     ImageService() = delete;
 
@@ -36,4 +33,4 @@ public:
     static bool isConfigured();
     static void shutdown();
 };
-}
+} // namespace aster::cache

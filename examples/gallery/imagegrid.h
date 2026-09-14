@@ -5,10 +5,8 @@
 #include <QAbstractScrollArea>
 #include <QMap>
 
-namespace aster::gallery
-{
-class ImageGrid : public QAbstractScrollArea
-{
+namespace aster::gallery {
+class ImageGrid : public QAbstractScrollArea {
     Q_OBJECT
 
 public:
@@ -27,8 +25,7 @@ protected:
     void scrollContentsBy(int dx, int dy) override;
 
 private:
-    struct Card
-    {
+    struct Card {
         QWidget* widget;
         gui::ImageBox* image;
     };
@@ -40,4 +37,4 @@ private:
     QMap<int, Card> cards_;
     gui::ImageBoxConfig config_;
 };
-}
+} // namespace aster::gallery

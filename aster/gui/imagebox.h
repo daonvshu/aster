@@ -8,28 +8,12 @@
 #include <QTimer>
 #include <QWidget>
 
-namespace aster::gui
-{
-Q_NAMESPACE
-Q_ENUM_NS(ImageTransition)
-Q_ENUM_NS(OffscreenPolicy)
-
-enum class ImageBoxState
-{
-    Empty,
-    Loading,
-    Ready,
-    Error
-};
-Q_ENUM_NS(ImageBoxState)
-
-namespace detail
-{
+namespace aster::gui {
+namespace detail {
 class ImageBoxPresentation;
 }
 
-class ImageBox : public QWidget
-{
+class ImageBox : public QWidget {
     Q_OBJECT
     Q_PROPERTY(QString source READ source WRITE setSource NOTIFY sourceChanged)
     Q_PROPERTY(aster::gui::ImageBoxState state READ state NOTIFY stateChanged)
@@ -146,7 +130,7 @@ Q_SIGNALS:
      * @brief Emitted when state changes.
      * @param state New state.
      */
-    void stateChanged(ImageBoxState state);
+    void stateChanged(aster::gui::ImageBoxState state);
 
     /**
      * @brief Emitted when a request starts.
@@ -163,7 +147,7 @@ Q_SIGNALS:
      * @param error Error code.
      * @param message Error message.
      */
-    void loadFailed(cache::ImageError error, const QString& message);
+    void loadFailed(aster::cache::ImageError error, const QString& message);
 
 protected:
     void paintEvent(QPaintEvent*) override;
@@ -195,7 +179,6 @@ private:
     bool resumePending_ = false;
     detail::ImageBoxPresentation* presentation_;
 };
-}
+} // namespace aster::gui
 
-Q_DECLARE_METATYPE(aster::gui::ImageBoxState)
 Q_DECLARE_METATYPE(aster::cache::ImageError)

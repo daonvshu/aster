@@ -18,12 +18,11 @@ int decoderBenchmark();
 int resamplerBenchmark();
 int lutBenchmark();
 
-template <class Function> Samples measure(int count, Function operation)
-{
+template <class Function>
+Samples measure(int count, Function operation) {
     Samples samples;
     samples.reserve(size_t(count));
-    for (int i = 0; i < count; ++i)
-    {
+    for (int i = 0; i < count; ++i) {
         const auto start = Timer::now();
         operation(i);
         samples.push_back(std::chrono::duration<double, std::micro>(Timer::now() - start).count());
@@ -31,15 +30,12 @@ template <class Function> Samples measure(int count, Function operation)
     return samples;
 }
 
-void report(int count, const char* name, Samples samples)
-{
+void report(int count, const char* name, Samples samples) {
     std::sort(samples.begin(), samples.end());
-    std::cout << count << ',' << name << ',' << samples[samples.size() / 2] << ','
-              << samples[(samples.size() - 1) * 95 / 100] << '\n';
+    std::cout << count << ',' << name << ',' << samples[samples.size() / 2] << ',' << samples[(samples.size() - 1) * 95 / 100] << '\n';
 }
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
     QCoreApplication app(argc, argv);
     if (app.arguments().contains("--lut"))
         return lutBenchmark();
@@ -52,8 +48,7 @@ int main(int argc, char** argv)
     if (app.arguments().contains("--disk"))
         return diskBenchmark();
     std::cout << "entries,operation,p50_us,p95_us\n";
-    for (int count : {1000, 10000})
-    {
+    for (int count : {1000, 10000}) {
         QImage image(16, 16, QImage::Format_ARGB32);
         image.fill(Qt::red);
         const auto cost = RenderedMemoryCache::costOf(image);
@@ -62,41 +57,17 @@ int main(int argc, char** argv)
         RenderOptions options;
         options.physicalTargetSize = image.size();
         std::vector<RenderKey> keys;
-        for (int i = 0; i < count * 2; ++i)
-        {
+        for (int i = 0; i < count * 2; ++i) {
             const auto source = builder.network(QUrl(QString("https://benchmark.test/%1").arg(i)));
             keys.push_back(*builder.render(*source.value, options).value);
         }
-        report(count, "put",
-               measure(count,
-                       [&](int i)
-                       {
-                           cache.put(keys[i], image);
-                       }));
-        report(count, "get",
-               measure(count,
-                       [&](int i)
-                       {
-                           cache.get(keys[i]);
-                       }));
-        report(count, "evict_put",
-               measure(count,
-                       [&](int i)
-                       {
-                           cache.put(keys[count + i], image);
-                       }));
+        report(count, "put", measure(count, [&](int i) { cache.put(keys[i], image); }));
+        report(count, "get", measure(count, [&](int i) { cache.get(keys[i]); }));
+        report(count, "evict_put", measure(count, [&](int i) { cache.put(keys[count + i], image); }));
         std::vector<std::thread> workers;
         std::vector<Samples> concurrent(4);
         for (int n = 0; n < 4; ++n)
-            workers.emplace_back(
-                [&, n]
-                {
-                    concurrent[n] = measure(count,
-                                            [&](int i)
-                                            {
-                                                cache.get(keys[count + (i + n) % count]);
-                                            });
-                });
+            workers.emplace_back([&, n] { concurrent[n] = measure(count, [&](int i) { cache.get(keys[count + (i + n) % count]); }); });
         for (auto& worker : workers)
             worker.join();
         Samples merged;

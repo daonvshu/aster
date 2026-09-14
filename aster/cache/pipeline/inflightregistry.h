@@ -12,47 +12,39 @@
 #include <unordered_map>
 #include <vector>
 
-namespace aster::cache
-{
-template <class Key, class Value> class InFlightRegistry
-{
+namespace aster::cache {
+template <class Key, class Value>
+class InFlightRegistry {
 public:
     using Completion = std::function<void(Result<Value>)>;
     using Starter = std::function<CancelAction(Completion)>;
 
 private:
-    struct Slot
-    {
+    struct Slot {
         std::atomic<bool> delivered{false};
         Completion callback;
 
-        void deliver(const Result<Value>& result) noexcept
-        {
+        void deliver(const Result<Value>& result) noexcept {
             if (delivered.exchange(true))
                 return;
 
             auto notify = std::move(callback);
-            try
-            {
+            try {
                 if (notify)
                     notify(result);
-            }
-            catch (...)
-            {
+            } catch (...) {
             }
         }
     };
 
-    struct Task
-    {
+    struct Task {
         std::unordered_map<quint64, QSharedPointer<Slot>> subscribers;
         CancelAction cancel;
         bool finished = false;
         bool cancelled = false;
     };
 
-    struct State
-    {
+    struct State {
         std::mutex mutex;
         QHash<Key, QSharedPointer<Task>> tasks;
         quint64 nextId = 0;
@@ -61,21 +53,15 @@ private:
 
     QSharedPointer<State> state_ = QSharedPointer<State>::create();
 
-    static void invoke(CancelAction action) noexcept
-    {
-        try
-        {
+    static void invoke(CancelAction action) noexcept {
+        try {
             if (action)
                 action();
-        }
-        catch (...)
-        {
+        } catch (...) {
         }
     }
 
-    static void complete(const QSharedPointer<State>& state, const Key& key,
-                         const QSharedPointer<Task>& task, Result<Value> result)
-    {
+    static void complete(const QSharedPointer<State>& state, const Key& key, const QSharedPointer<Task>& task, Result<Value> result) {
         std::unordered_map<quint64, QSharedPointer<Slot>> subscribers;
         CancelAction retired;
 
@@ -103,13 +89,11 @@ public:
     InFlightRegistry(const InFlightRegistry&) = delete;
     InFlightRegistry& operator=(const InFlightRegistry&) = delete;
 
-    ~InFlightRegistry()
-    {
+    ~InFlightRegistry() {
         shutdown();
     }
 
-    Subscription subscribe(const Key& key, Starter starter, Completion callback)
-    {
+    Subscription subscribe(const Key& key, Starter starter, Completion callback) {
         const auto state = state_;
         auto slot = QSharedPointer<Slot>::create();
         slot->callback = std::move(callback);
@@ -119,17 +103,13 @@ public:
 
         {
             std::lock_guard<std::mutex> lock(state->mutex);
-            if (!state->closed)
-            {
+            if (!state->closed) {
                 auto it = state->tasks.find(key);
-                if (it == state->tasks.end())
-                {
+                if (it == state->tasks.end()) {
                     task = QSharedPointer<Task>::create();
                     state->tasks.insert(key, task);
                     start = true;
-                }
-                else
-                {
+                } else {
                     task = it.value();
                 }
 
@@ -138,44 +118,35 @@ public:
             }
         }
 
-        if (!task)
-        {
+        if (!task) {
             slot->deliver(Result<Value>::failure(ImageError::Cancelled));
             return {};
         }
 
-        Subscription subscription(
-            [state, task, key, id, slot]
-            {
-                CancelAction cancel;
+        Subscription subscription([state, task, key, id, slot] {
+            CancelAction cancel;
 
-                {
-                    std::lock_guard<std::mutex> lock(state->mutex);
-                    task->subscribers.erase(id);
-                    if (!task->finished && task->subscribers.empty())
-                    {
-                        task->finished = true;
-                        task->cancelled = true;
-                        const auto it = state->tasks.find(key);
-                        if (it != state->tasks.end() && it.value() == task)
-                            state->tasks.erase(it);
-                        cancel = std::move(task->cancel);
-                    }
+            {
+                std::lock_guard<std::mutex> lock(state->mutex);
+                task->subscribers.erase(id);
+                if (!task->finished && task->subscribers.empty()) {
+                    task->finished = true;
+                    task->cancelled = true;
+                    const auto it = state->tasks.find(key);
+                    if (it != state->tasks.end() && it.value() == task)
+                        state->tasks.erase(it);
+                    cancel = std::move(task->cancel);
                 }
+            }
 
-                slot->deliver(Result<Value>::failure(ImageError::Cancelled));
-                invoke(std::move(cancel));
-            });
+            slot->deliver(Result<Value>::failure(ImageError::Cancelled));
+            invoke(std::move(cancel));
+        });
 
-        if (start)
-        {
-            auto done = [state, task, key](Result<Value> result)
-            {
-                complete(state, key, task, std::move(result));
-            };
+        if (start) {
+            auto done = [state, task, key](Result<Value> result) { complete(state, key, task, std::move(result)); };
 
-            try
-            {
+            try {
                 auto action = starter(done);
                 bool cancelNow = false;
 
@@ -188,9 +159,7 @@ public:
 
                 if (cancelNow)
                     invoke(std::move(action));
-            }
-            catch (...)
-            {
+            } catch (...) {
                 done(Result<Value>::failure(ImageError::ProcessingError, "Task starter threw"));
             }
         }
@@ -198,29 +167,25 @@ public:
         return subscription;
     }
 
-    size_t count() const
-    {
+    size_t count() const {
         std::lock_guard<std::mutex> lock(state_->mutex);
         return size_t(state_->tasks.size());
     }
 
-    void shutdown() noexcept
-    {
+    void shutdown() noexcept {
         QHash<Key, QSharedPointer<Task>> tasks;
 
         {
             std::lock_guard<std::mutex> lock(state_->mutex);
             state_->closed = true;
             tasks.swap(state_->tasks);
-            for (auto it = tasks.begin(); it != tasks.end(); ++it)
-            {
+            for (auto it = tasks.begin(); it != tasks.end(); ++it) {
                 it.value()->finished = true;
                 it.value()->cancelled = true;
             }
         }
 
-        for (auto it = tasks.begin(); it != tasks.end(); ++it)
-        {
+        for (auto it = tasks.begin(); it != tasks.end(); ++it) {
             std::unordered_map<quint64, QSharedPointer<Slot>> subscribers;
             CancelAction action;
 
@@ -236,4 +201,4 @@ public:
         }
     }
 };
-}
+} // namespace aster::cache

@@ -5,10 +5,8 @@
 class QLineEdit;
 class QComboBox;
 
-namespace aster::gallery
-{
-class HttpTestPanel : public QWidget
-{
+namespace aster::gallery {
+class HttpTestPanel : public QWidget {
     Q_OBJECT
 
 public:
@@ -27,4 +25,4 @@ private:
     QLineEdit* second_;
     QComboBox* scenario_;
 };
-}
+} // namespace aster::gallery

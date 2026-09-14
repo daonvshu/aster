@@ -3,31 +3,27 @@
 #include <functional>
 #include <utility>
 
-namespace aster::cache
-{
+namespace aster::cache {
 using CancelAction = std::function<void()>;
 
-class Subscription
-{
+class Subscription {
 public:
     Subscription() = default;
 
-    explicit Subscription(CancelAction cancel) : cancel_(std::move(cancel))
-    {
+    explicit Subscription(CancelAction cancel)
+        : cancel_(std::move(cancel)) {
     }
 
     Subscription(const Subscription&) = delete;
     Subscription& operator=(const Subscription&) = delete;
 
-    Subscription(Subscription&& other) noexcept : cancel_(std::move(other.cancel_))
-    {
+    Subscription(Subscription&& other) noexcept
+        : cancel_(std::move(other.cancel_)) {
         other.cancel_ = {};
     }
 
-    Subscription& operator=(Subscription&& other) noexcept
-    {
-        if (this != &other)
-        {
+    Subscription& operator=(Subscription&& other) noexcept {
+        if (this != &other) {
             cancel();
             cancel_ = std::move(other.cancel_);
             other.cancel_ = {};
@@ -35,23 +31,17 @@ public:
         return *this;
     }
 
-    ~Subscription()
-    {
+    ~Subscription() {
         cancel();
     }
 
-    void cancel() noexcept
-    {
+    void cancel() noexcept {
         auto action = std::move(cancel_);
         cancel_ = {};
-        if (action)
-        {
-            try
-            {
+        if (action) {
+            try {
                 action();
-            }
-            catch (...)
-            {
+            } catch (...) {
             }
         }
     }
@@ -59,4 +49,4 @@ public:
 private:
     CancelAction cancel_;
 };
-}
+} // namespace aster::cache

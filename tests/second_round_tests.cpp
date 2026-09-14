@@ -29,52 +29,39 @@
 using namespace aster::cache;
 using namespace aster::cache::testing;
 
-#define VERIFY(condition)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
-        if (!(condition))                                                                          \
-            throw std::runtime_error(std::string(__FILE__) + ":" + std::to_string(__LINE__) +      \
-                                     " " #condition);                                              \
+#define VERIFY(condition)                                                                                                                                      \
+    do {                                                                                                                                                       \
+        if (!(condition))                                                                                                                                      \
+            throw std::runtime_error(std::string(__FILE__) + ":" + std::to_string(__LINE__) + " " #condition);                                                 \
     } while (false)
 
-namespace
-{
-QByteArray digest(int n = 0)
-{
+namespace {
+QByteArray digest(int n = 0) {
     return QCryptographicHash::hash(QByteArray::number(n), QCryptographicHash::Sha256);
 }
 
-class ScriptedNetwork final : public INetworkService
-{
+class ScriptedNetwork final : public INetworkService {
 public:
     int calls = 0;
-    NetworkResponse response{
-        200,
-        {{"cache-control", "max-age=10"}, {"etag", "v1"}, {"content-type", "image/test"}},
-        "red"};
+    NetworkResponse response{200, {{"cache-control", "max-age=10"}, {"etag", "v1"}, {"content-type", "image/test"}}, "red"};
     NetworkFetchOptions last;
     bool fail = false;
 
-    Result<NetworkResponse> fetch(const QUrl&, const NetworkFetchOptions& options,
-                                  const std::atomic<bool>&) override
-    {
+    Result<NetworkResponse> fetch(const QUrl&, const NetworkFetchOptions& options, const std::atomic<bool>&) override {
         ++calls;
         last = options;
-        return fail ? Result<NetworkResponse>::failure(ImageError::IoError)
-                    : Result<NetworkResponse>::success(response);
+        return fail ? Result<NetworkResponse>::failure(ImageError::IoError) : Result<NetworkResponse>::success(response);
     }
 };
 
-ImageSource remote()
-{
+ImageSource remote() {
     ImageSource source;
     source.kind = ImageSource::Kind::Network;
     source.url = QUrl("https://example.test/image?token=secret");
     return source;
 }
 
-void encodedTests()
-{
+void encodedTests() {
     auto clock = QSharedPointer<FakeClock>::create();
     SourcePayload p;
     p.bytes = "abcd";
@@ -110,8 +97,7 @@ void encodedTests()
     VERIFY(!cache.put({digest()}, p));
 }
 
-void diskTests()
-{
+void diskTests() {
     QTemporaryDir dir;
     VERIFY(dir.isValid());
     auto clock = QSharedPointer<FakeClock>::create(1000);
@@ -126,24 +112,16 @@ void diskTests()
     VERIFY(!disk.put("../outside", entry));
     VERIFY(!disk.put(digest(1), {QByteArray(1025, 'x'), {}}));
 
-    for (auto stage : {FileDiskCache::WriteStage::TenPercent, FileDiskCache::WriteStage::Half,
-                       FileDiskCache::WriteStage::BeforeCommit})
-    {
-        FileDiskCache faulty(dir.path(), 1024 * 1024, 1024, clock,
-                             [stage](auto reached)
-                             {
-                                 return reached != stage;
-                             });
+    for (auto stage : {FileDiskCache::WriteStage::TenPercent, FileDiskCache::WriteStage::Half, FileDiskCache::WriteStage::BeforeCommit}) {
+        FileDiskCache faulty(dir.path(), 1024 * 1024, 1024, clock, [stage](auto reached) { return reached != stage; });
         VERIFY(!faulty.put(digest(), {"new", {}}));
         VERIFY(disk.get(digest()).value->bytes == "old");
     }
 
     // Terminate a separate process without stack unwinding at each write checkpoint.
-    for (int stage = 0; stage < 3; ++stage)
-    {
+    for (int stage = 0; stage < 3; ++stage) {
         QProcess child;
-        child.start(QCoreApplication::applicationFilePath(),
-                    {"--disk-crash", dir.path(), QString::number(stage)});
+        child.start(QCoreApplication::applicationFilePath(), {"--disk-crash", dir.path(), QString::number(stage)});
         VERIFY(child.waitForFinished(15000));
         VERIFY(child.exitCode() == 73);
         FileDiskCache reopened(dir.path(), 1024 * 1024, 1024, clock);
@@ -172,12 +150,10 @@ void diskTests()
     std::vector<std::thread> threads;
     std::atomic<bool> good{true};
     for (int i = 0; i < 8; ++i)
-        threads.emplace_back(
-            [&, i]
-            {
-                if (!disk.put(digest(), {QByteArray(100, char('a' + i)), {}}))
-                    good = false;
-            });
+        threads.emplace_back([&, i] {
+            if (!disk.put(digest(), {QByteArray(100, char('a' + i)), {}}))
+                good = false;
+        });
     for (auto& t : threads)
         t.join();
     VERIFY(good);
@@ -190,8 +166,7 @@ void diskTests()
     VERIFY(disk.clear(&stop));
     VERIFY(disk.stats().totalBytes == 0);
 
-    for (int i = 0; i < 3; ++i)
-    {
+    for (int i = 0; i < 3; ++i) {
         clock->advance(1);
         VERIFY(disk.put(digest(i), entry));
     }
@@ -219,8 +194,7 @@ void diskTests()
     VERIFY(!unavailable.get(digest()));
 }
 
-void sourceTests()
-{
+void sourceTests() {
     QTemporaryDir dir;
     VERIFY(dir.isValid());
     auto clock = QSharedPointer<FakeClock>::create(100000);
@@ -232,10 +206,7 @@ void sourceTests()
     const auto key = *loader.key(source).value;
     SourceLoadOptions options;
     std::atomic<bool> cancelled{false};
-    auto load = [&]
-    {
-        return loader.load(source, key, options, cancelled);
-    };
+    auto load = [&] { return loader.load(source, key, options, cancelled); };
 
     VERIFY(load().source == CacheResultSource::Network);
     VERIFY(load().source == CacheResultSource::EncodedMemory);
@@ -354,10 +325,7 @@ void sourceTests()
     VERIFY(!load());
     net->response.status = 304;
     VERIFY(load().error == ImageError::CorruptedEntry);
-    net->response = {
-        200,
-        {{"cache-control", "max-age=1"}, {"last-modified", "Wed, 09 Sep 2026 00:00:00 GMT"}},
-        "local-time"};
+    net->response = {200, {{"cache-control", "max-age=1"}, {"last-modified", "Wed, 09 Sep 2026 00:00:00 GMT"}}, "local-time"};
     VERIFY(load());
     clock->advance(1000);
     options.cache.read = CacheReadPolicy::Default;
@@ -376,35 +344,27 @@ void sourceTests()
     VERIFY(!encoded->get(privateKey));
 }
 
-ImageResult waitRequest(ImagePipeline& pipeline, const SourceRequest& request)
-{
+ImageResult waitRequest(ImagePipeline& pipeline, const SourceRequest& request) {
     auto promise = QSharedPointer<std::promise<ImageResult>>::create();
     auto future = promise->get_future();
-    auto subscription = pipeline.request(request,
-                                         [promise](auto result)
-                                         {
-                                             promise->set_value(std::move(result));
-                                         });
+    auto subscription = pipeline.request(request, [promise](auto result) { promise->set_value(std::move(result)); });
     VERIFY(future.wait_for(std::chrono::seconds(10)) == std::future_status::ready);
     return future.get();
 }
 
-void secondPipelineTests()
-{
+void secondPipelineTests() {
     auto clock = QSharedPointer<FakeClock>::create(100000);
     auto encoded = QSharedPointer<EncodedMemoryCache>::create(65536, 4096, clock);
     auto net = QSharedPointer<ScriptedNetwork>::create();
     auto loader = QSharedPointer<CachedSourceLoader>::create(encoded, nullptr, net, clock);
     auto rendered = QSharedPointer<RenderedMemoryCache>::create(65536, clock);
     std::atomic<int> renders{0};
-    ImagePipeline pipeline(rendered, loader,
-                           [&](const QByteArray& data, const RenderOptions& o, const auto&)
-                           {
-                               ++renders;
-                               QImage image(o.physicalTargetSize, QImage::Format_ARGB32);
-                               image.fill(data == "red" ? Qt::red : Qt::blue);
-                               return ImageResult::success(image);
-                           });
+    ImagePipeline pipeline(rendered, loader, [&](const QByteArray& data, const RenderOptions& o, const auto&) {
+        ++renders;
+        QImage image(o.physicalTargetSize, QImage::Format_ARGB32);
+        image.fill(data == "red" ? Qt::red : Qt::blue);
+        return ImageResult::success(image);
+    });
     SourceRequest request;
     request.source = remote();
     request.render.physicalTargetSize = QSize(8, 8);
@@ -438,26 +398,20 @@ void secondPipelineTests()
     VERIFY(pipeline.stats().renderInFlight == 0);
 }
 
-class BlockingLoader final : public IImageSourceLoader
-{
+class BlockingLoader final : public IImageSourceLoader {
 public:
     std::atomic<int> calls{0};
     std::atomic<int> cancellations{0};
     std::atomic<bool> release{false};
 
-    Result<SourceKey> key(const ImageSource&) const override
-    {
+    Result<SourceKey> key(const ImageSource&) const override {
         return Result<SourceKey>::success({digest(555)});
     }
 
-    Result<SourcePayload> load(const ImageSource&, const SourceKey&, const SourceLoadOptions&,
-                               const std::atomic<bool>& cancelled) override
-    {
+    Result<SourcePayload> load(const ImageSource&, const SourceKey&, const SourceLoadOptions&, const std::atomic<bool>& cancelled) override {
         ++calls;
-        while (!release.load())
-        {
-            if (cancelled.load())
-            {
+        while (!release.load()) {
+            if (cancelled.load()) {
                 ++cancellations;
                 return Result<SourcePayload>::failure(ImageError::Cancelled);
             }
@@ -469,21 +423,16 @@ public:
     }
 };
 
-void decodeBudgetTests()
-{
+void decodeBudgetTests() {
     constexpr qint64 encodedBudget = 65536;
     constexpr qint64 renderedBudget = 256 * 1024;
     auto encoded = QSharedPointer<EncodedMemoryCache>::create(encodedBudget, 32768);
     auto rendered = QSharedPointer<RenderedMemoryCache>::create(renderedBudget);
     SourceCacheConfig config;
     config.encodedData = true;
-    auto loader = QSharedPointer<CachedSourceLoader>::create(
-        encoded, nullptr, nullptr, QSharedPointer<SystemClock>::create(), config);
+    auto loader = QSharedPointer<CachedSourceLoader>::create(encoded, nullptr, nullptr, QSharedPointer<SystemClock>::create(), config);
     ImagePipeline pipeline(rendered, loader,
-                           [](const QByteArray& bytes, const RenderOptions&, const auto&)
-                           {
-                               return ImageResult::success(QImage::fromData(bytes));
-                           });
+                           [](const QByteArray& bytes, const RenderOptions&, const auto&) { return ImageResult::success(QImage::fromData(bytes)); });
     SourceRequest request;
     request.source.contentType = "image/png";
     request.render.physicalTargetSize = QSize(128, 128);
@@ -510,12 +459,10 @@ void decodeBudgetTests()
     VERIFY(waitRequest(pipeline, request).error == ImageError::InvalidRequest);
 }
 
-void workerLifecycleTests()
-{
+void workerLifecycleTests() {
     auto loader = QSharedPointer<BlockingLoader>::create();
     auto cache = QSharedPointer<RenderedMemoryCache>::create(65536);
-    auto renderer = [](const QByteArray&, const RenderOptions& o, const auto&)
-    {
+    auto renderer = [](const QByteArray&, const RenderOptions& o, const auto&) {
         QImage image(o.physicalTargetSize, QImage::Format_ARGB32);
         image.fill(Qt::red);
         return ImageResult::success(image);
@@ -524,8 +471,7 @@ void workerLifecycleTests()
     SourceRequest request;
     request.render.physicalTargetSize = QSize(8, 8);
     std::atomic<int> success{0}, cancelled{0};
-    auto done = [&](auto result)
-    {
+    auto done = [&](auto result) {
         if (result)
             ++success;
         else if (result.error == ImageError::Cancelled)
@@ -559,78 +505,60 @@ void workerLifecycleTests()
     VERIFY(loader->cancellations == 1);
 
     loader->release = true;
-    auto workerOwned = QSharedPointer<std::unique_ptr<ImagePipeline>>::create(
-        std::make_unique<ImagePipeline>(cache, loader, renderer));
+    auto workerOwned = QSharedPointer<std::unique_ptr<ImagePipeline>>::create(std::make_unique<ImagePipeline>(cache, loader, renderer));
     auto completed = QSharedPointer<std::promise<void>>::create();
     auto completion = completed->get_future();
-    auto handle = (*workerOwned)
-                      ->request(request,
-                                [workerOwned, completed](auto)
-                                {
-                                    workerOwned->reset();
-                                    completed->set_value();
-                                });
+    auto handle = (*workerOwned)->request(request, [workerOwned, completed](auto) {
+        workerOwned->reset();
+        completed->set_value();
+    });
     VERIFY(completion.wait_for(std::chrono::seconds(10)) == std::future_status::ready);
 }
 
 #ifdef ASTER_TEST_QT_NETWORK
-void httpServerTest()
-{
+void httpServerTest() {
     std::promise<quint16> ready;
     std::atomic<bool> conditional{false};
     std::atomic<int> bodyBytes{0};
-    std::thread server(
-        [&]
-        {
-            QTcpServer listener;
-            if (!listener.listen(QHostAddress::LocalHost))
-            {
-                ready.set_value(0);
+    std::thread server([&] {
+        QTcpServer listener;
+        if (!listener.listen(QHostAddress::LocalHost)) {
+            ready.set_value(0);
+            return;
+        }
+        ready.set_value(listener.serverPort());
+        for (int i = 0; i < 3; ++i) {
+            if (!listener.waitForNewConnection(10000))
                 return;
-            }
-            ready.set_value(listener.serverPort());
-            for (int i = 0; i < 3; ++i)
-            {
-                if (!listener.waitForNewConnection(10000))
+            std::unique_ptr<QTcpSocket> socket(listener.nextPendingConnection());
+            QByteArray request;
+            while (!request.contains("\r\n\r\n")) {
+                if (!socket->waitForReadyRead(10000))
                     return;
-                std::unique_ptr<QTcpSocket> socket(listener.nextPendingConnection());
-                QByteArray request;
-                while (!request.contains("\r\n\r\n"))
-                {
-                    if (!socket->waitForReadyRead(10000))
-                        return;
-                    request += socket->readAll();
-                }
-                QByteArray response;
-                if (i == 0)
-                {
-                    response = "HTTP/1.1 200 OK\r\nContent-Length: 3\r\nETag: v1\r\nCache-Control: "
-                               "max-age=1\r\nConnection: close\r\n\r\nred";
-                    bodyBytes += 3;
-                }
-                else if (i == 1)
-                {
-                    conditional = request.toLower().contains("if-none-match: v1");
-                    response = "HTTP/1.1 304 Not Modified\r\nContent-Length: 0\r\nCache-Control: "
-                               "max-age=10\r\nConnection: close\r\n\r\n";
-                }
-                else
-                {
-                    response =
-                        "HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\ncut";
-                }
-                socket->write(response);
-                socket->waitForBytesWritten(10000);
-                socket->disconnectFromHost();
+                request += socket->readAll();
             }
-        });
+            QByteArray response;
+            if (i == 0) {
+                response = "HTTP/1.1 200 OK\r\nContent-Length: 3\r\nETag: v1\r\nCache-Control: "
+                           "max-age=1\r\nConnection: close\r\n\r\nred";
+                bodyBytes += 3;
+            } else if (i == 1) {
+                conditional = request.toLower().contains("if-none-match: v1");
+                response = "HTTP/1.1 304 Not Modified\r\nContent-Length: 0\r\nCache-Control: "
+                           "max-age=10\r\nConnection: close\r\n\r\n";
+            } else {
+                response = "HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\ncut";
+            }
+            socket->write(response);
+            socket->waitForBytesWritten(10000);
+            socket->disconnectFromHost();
+        }
+    });
 
-    struct Join
-    {
+    struct Join {
         std::thread& thread;
 
-        ~Join()
-        {
+        ~Join() {
             thread.join();
         }
     } join{server};
@@ -659,28 +587,24 @@ void httpServerTest()
     VERIFY(!service->fetch(source.url, {}, cancelled));
 }
 #endif
-}
+} // namespace
 
-int diskCrashProbe(const QStringList& arguments)
-{
+int diskCrashProbe(const QStringList& arguments) {
     if (!arguments.contains("--disk-crash"))
         return -1;
     if (arguments.size() != 4)
         return 2;
     const int stage = arguments[3].toInt();
-    FileDiskCache disk(arguments[2], 1024 * 1024, 1024, QSharedPointer<SystemClock>::create(),
-                       [stage](auto reached)
-                       {
-                           if (int(reached) == stage)
-                               std::_Exit(73);
-                           return true;
-                       });
+    FileDiskCache disk(arguments[2], 1024 * 1024, 1024, QSharedPointer<SystemClock>::create(), [stage](auto reached) {
+        if (int(reached) == stage)
+            std::_Exit(73);
+        return true;
+    });
     disk.put(digest(), {"interrupted", {}});
     return 3;
 }
 
-void secondRoundTests()
-{
+void secondRoundTests() {
     encodedTests();
     std::cout << "PASS encoded cache\n";
     diskTests();

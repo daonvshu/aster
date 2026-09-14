@@ -10,13 +10,10 @@
 #include <list>
 #include <mutex>
 
-namespace aster::cache
-{
-class EncodedMemoryCache
-{
+namespace aster::cache {
+class EncodedMemoryCache {
 public:
-    EncodedMemoryCache(qint64 budget, qint64 maxEntry,
-                       QSharedPointer<Clock> clock = QSharedPointer<SystemClock>::create());
+    EncodedMemoryCache(qint64 budget, qint64 maxEntry, QSharedPointer<Clock> clock = QSharedPointer<SystemClock>::create());
     Result<SourcePayload> get(const SourceKey&, bool allowStale = false);
     bool put(const SourceKey&, const SourcePayload&);
     bool remove(const SourceKey&);
@@ -28,8 +25,7 @@ public:
     static qint64 costOf(const SourcePayload&);
 
 private:
-    struct Entry
-    {
+    struct Entry {
         SourceKey key;
         SourcePayload value;
         qint64 cost;
@@ -45,4 +41,4 @@ private:
     qint64 maxEntry_;
     QSharedPointer<Clock> clock_;
 };
-}
+} // namespace aster::cache

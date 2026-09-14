@@ -21,18 +21,14 @@
 
 using namespace aster::cache;
 
-#define ENSURE(condition)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
-        if (!(condition))                                                                          \
-            throw std::runtime_error(std::string(__FILE__) + ":" + std::to_string(__LINE__) +      \
-                                     " " #condition);                                              \
+#define ENSURE(condition)                                                                                                                                      \
+    do {                                                                                                                                                       \
+        if (!(condition))                                                                                                                                      \
+            throw std::runtime_error(std::string(__FILE__) + ":" + std::to_string(__LINE__) + " " #condition);                                                 \
     } while (false)
 
-namespace
-{
-QByteArray png(QSize size = QSize(16, 16))
-{
+namespace {
+QByteArray png(QSize size = QSize(16, 16)) {
     QImage image(size, QImage::Format_ARGB32);
     image.fill(QColor(16, 32, 64, 128));
     QByteArray bytes;
@@ -42,8 +38,7 @@ QByteArray png(QSize size = QSize(16, 16))
     return bytes;
 }
 
-RenderKey key(const QByteArray& nameSpace, int variant = 0)
-{
+RenderKey key(const QByteArray& nameSpace, int variant = 0) {
     KeyContext context;
     context.nameSpace = nameSpace;
     auto source = KeyBuilder().network(QUrl("https://test/image?token=private-secret"), context);
@@ -52,8 +47,7 @@ RenderKey key(const QByteArray& nameSpace, int variant = 0)
     return *KeyBuilder().render(*source.value, options).value;
 }
 
-void exactStatsAndDump()
-{
+void exactStatsAndDump() {
     auto clock = QSharedPointer<testing::FakeClock>::create();
     QImage image(16, 16, QImage::Format_ARGB32);
     image.fill(Qt::red);
@@ -87,8 +81,7 @@ void exactStatsAndDump()
     ENSURE(!cache.get(a) && cache.get(c));
 }
 
-void boundedDecode()
-{
+void boundedDecode() {
     const auto bytes = png();
     const std::atomic<bool> running{false}, cancelled{true};
     BoundedImageDecoder decoder;
@@ -120,16 +113,14 @@ void boundedDecode()
     ENSURE(BoundedImageDecoder(limits).decode(bytes, running));
     limits = {};
     limits.allowedFormats = {"jpeg"};
-    ENSURE(BoundedImageDecoder(limits).decode(bytes, running).error ==
-           ImageError::UnsupportedFormat);
+    ENSURE(BoundedImageDecoder(limits).decode(bytes, running).error == ImageError::UnsupportedFormat);
 
     // Keep the PNG IHDR checksum valid so preflight sees the malicious dimensions.
     QByteArray header = bytes;
     qToBigEndian<quint32>(100000, reinterpret_cast<uchar*>(header.data() + 16));
     qToBigEndian<quint32>(100000, reinterpret_cast<uchar*>(header.data() + 20));
     quint32 crc = 0xffffffff;
-    for (int i = 12; i < 29; ++i)
-    {
+    for (int i = 12; i < 29; ++i) {
         crc ^= quint8(header[i]);
         for (int bit = 0; bit < 8; ++bit)
             crc = (crc >> 1) ^ ((crc & 1) ? 0xedb88320u : 0u);
@@ -141,8 +132,7 @@ void boundedDecode()
     ENSURE(compressed.size() < 100000);
     limits = {};
     limits.maxPixels = 65536;
-    ENSURE(BoundedImageDecoder(limits).decode(compressed, running).error ==
-           ImageError::ResourceLimit);
+    ENSURE(BoundedImageDecoder(limits).decode(compressed, running).error == ImageError::ResourceLimit);
 
     std::mt19937 random(912);
     limits = {};
@@ -150,8 +140,7 @@ void boundedDecode()
     limits.maxPixels = 4096;
     limits.maxDecodedBytes = 65536;
     BoundedImageDecoder fuzz(limits);
-    for (int i = 0; i < 500; ++i)
-    {
+    for (int i = 0; i < 500; ++i) {
         QByteArray invalid(1 + int(random() % 256), '\0');
         for (auto& byte : invalid)
             byte = char(random() & 255);
@@ -160,66 +149,52 @@ void boundedDecode()
     }
 }
 
-class Network final : public INetworkService
-{
+class Network final : public INetworkService {
 public:
     QByteArray bytes = png();
     std::atomic<int> calls{0};
     std::atomic<bool> validate{false};
     std::atomic<bool> noStore{false};
 
-    Result<NetworkResponse> fetch(const QUrl&, const NetworkFetchOptions&,
-                                  const std::atomic<bool>&) override
-    {
+    Result<NetworkResponse> fetch(const QUrl&, const NetworkFetchOptions&, const std::atomic<bool>&) override {
         ++calls;
         return Result<NetworkResponse>::success(
-            {validate ? 304 : 200,
-             {{"cache-control", noStore ? "no-store" : "max-age=60"}, {"etag", "v1"}},
-             validate ? QByteArray{} : bytes});
+                {validate ? 304 : 200, {{"cache-control", noStore ? "no-store" : "max-age=60"}, {"etag", "v1"}}, validate ? QByteArray{} : bytes});
     }
 };
 
-class ThrowingDisk final : public IDiskCache
-{
+class ThrowingDisk final : public IDiskCache {
 public:
-    Result<DiskEntry> get(const QByteArray&) override
-    {
+    Result<DiskEntry> get(const QByteArray&) override {
         throw std::runtime_error("injected read failure");
     }
 
-    bool put(const QByteArray&, const DiskEntry&) override
-    {
+    bool put(const QByteArray&, const DiskEntry&) override {
         throw std::runtime_error("injected write failure");
     }
 
-    bool remove(const QByteArray&) override
-    {
+    bool remove(const QByteArray&) override {
         throw std::runtime_error("injected remove failure");
     }
 
-    bool contains(const QByteArray&) override
-    {
+    bool contains(const QByteArray&) override {
         return false;
     }
 
-    bool clear(const std::atomic<bool>*) override
-    {
+    bool clear(const std::atomic<bool>*) override {
         return false;
     }
 
-    bool trim(qint64, const std::atomic<bool>*) override
-    {
+    bool trim(qint64, const std::atomic<bool>*) override {
         return false;
     }
 
-    DiskStats stats() const override
-    {
+    DiskStats stats() const override {
         return {};
     }
 };
 
-void diskExceptionFallback()
-{
+void diskExceptionFallback() {
     auto network = QSharedPointer<Network>::create();
     CachedSourceLoader loader(nullptr, QSharedPointer<ThrowingDisk>::create(), network);
     ImageSource source;
@@ -241,29 +216,21 @@ void diskExceptionFallback()
     ENSURE(network->calls == 2 && loader.cacheStats().rawDisk.ioErrors == 5);
 }
 
-ImageResult request(ImagePipeline& pipeline, const SourceRequest& input)
-{
+ImageResult request(ImagePipeline& pipeline, const SourceRequest& input) {
     auto promise = QSharedPointer<std::promise<ImageResult>>::create();
     auto future = promise->get_future();
-    auto subscription = pipeline.request(input,
-                                         [promise](ImageResult result)
-                                         {
-                                             promise->set_value(std::move(result));
-                                         });
+    auto subscription = pipeline.request(input, [promise](ImageResult result) { promise->set_value(std::move(result)); });
     ENSURE(future.wait_for(std::chrono::seconds(10)) == std::future_status::ready);
     auto result = future.get();
     ENSURE(pipeline.waitForIdle());
     return result;
 }
 
-void layeredMaintenance()
-{
+void layeredMaintenance() {
     QTemporaryDir dir;
     auto clock = QSharedPointer<testing::FakeClock>::create();
-    auto raw =
-        QSharedPointer<FileDiskCache>::create(dir.filePath("raw"), 1024 * 1024, 65536, clock);
-    auto backing =
-        QSharedPointer<FileDiskCache>::create(dir.filePath("rendered"), 1024 * 1024, 65536, clock);
+    auto raw = QSharedPointer<FileDiskCache>::create(dir.filePath("raw"), 1024 * 1024, 65536, clock);
+    auto backing = QSharedPointer<FileDiskCache>::create(dir.filePath("rendered"), 1024 * 1024, 65536, clock);
     auto disk = QSharedPointer<RenderedDiskCache>::create(backing);
     auto encoded = QSharedPointer<EncodedMemoryCache>::create(65536, 65536, clock);
     auto memory = QSharedPointer<RenderedMemoryCache>::create(65536, clock);
@@ -274,19 +241,17 @@ void layeredMaintenance()
     std::mutex eventMutex;
     std::vector<PipelineEvent> events;
     ImagePipeline pipeline(
-        memory, loader,
-        [&](const auto& bytes, const auto&, const auto& cancelled)
-        {
-            ++renders;
-            return BoundedImageDecoder().decode(bytes, cancelled);
-        },
-        2,
-        [&](const PipelineEvent& event)
-        {
-            std::lock_guard<std::mutex> lock(eventMutex);
-            events.push_back(event);
-        },
-        {disk, active});
+            memory, loader,
+            [&](const auto& bytes, const auto&, const auto& cancelled) {
+                ++renders;
+                return BoundedImageDecoder().decode(bytes, cancelled);
+            },
+            2,
+            [&](const PipelineEvent& event) {
+                std::lock_guard<std::mutex> lock(eventMutex);
+                events.push_back(event);
+            },
+            {disk, active});
 
     SourceRequest input;
     input.source.kind = ImageSource::Kind::Network;
@@ -301,8 +266,7 @@ void layeredMaintenance()
     ENSURE(request(pipeline, input).source == CacheResultSource::ActiveResource);
     ENSURE(network->calls == 1 && renders == 1);
     auto stats = pipeline.cacheStats();
-    ENSURE(stats.network.requests == 1 &&
-           stats.network.receivedBytes == quint64(network->bytes.size()));
+    ENSURE(stats.network.requests == 1 && stats.network.receivedBytes == quint64(network->bytes.size()));
     ENSURE(stats.encodedMemory.hits == 1 && stats.encodedMemory.misses == 1);
     ENSURE(stats.active.hits == 1 && stats.rawDisk.misses == 1);
 
@@ -340,20 +304,16 @@ void layeredMaintenance()
     {
         std::lock_guard<std::mutex> lock(eventMutex);
         bool sourceEvent = false, completed = false;
-        for (const auto& event : events)
-        {
+        for (const auto& event : events) {
             ENSURE(event.keyDigest.size() == 32);
-            sourceEvent |= event.kind == PipelineEvent::Kind::SourceCompleted &&
-                           event.source == CacheResultSource::Network;
-            completed |= event.kind == PipelineEvent::Kind::Completed &&
-                         event.source == CacheResultSource::ActiveResource;
+            sourceEvent |= event.kind == PipelineEvent::Kind::SourceCompleted && event.source == CacheResultSource::Network;
+            completed |= event.kind == PipelineEvent::Kind::Completed && event.source == CacheResultSource::ActiveResource;
         }
         ENSURE(sourceEvent && completed);
     }
 
     QDirIterator files(dir.path(), QDir::Files, QDirIterator::Subdirectories);
-    while (files.hasNext())
-    {
+    while (files.hasNext()) {
         files.next();
         ENSURE(!files.fileName().contains("private-secret"));
         ENSURE(files.fileName().endsWith(".entry") && files.fileName().size() == 70);
@@ -368,36 +328,29 @@ void layeredMaintenance()
     ENSURE(upgraded.recover());
     ENSURE(upgraded.stats().entryCount == 0);
     bool invalidVersion = false;
-    try
-    {
+    try {
         FileDiskCache invalid(dir.path(), 65536, 32768, clock, {}, "../escape");
-    }
-    catch (const std::invalid_argument&)
-    {
+    } catch (const std::invalid_argument&) {
         invalidVersion = true;
     }
     ENSURE(invalidVersion);
 }
 
-void maintenanceRaceAndCorruption()
-{
+void maintenanceRaceAndCorruption() {
     RenderedMemoryCache memory(32768);
     QImage image(16, 16, QImage::Format_ARGB32);
     image.fill(Qt::green);
     const auto render = key("race");
     std::vector<std::thread> threads;
     for (int n = 0; n < 4; ++n)
-        threads.emplace_back(
-            [&]
-            {
-                for (int i = 0; i < 500; ++i)
-                {
-                    memory.put(render, image);
-                    memory.get(render);
-                    memory.invalidate({render.source.digest, {}});
-                    memory.debugDump(2);
-                }
-            });
+        threads.emplace_back([&] {
+            for (int i = 0; i < 500; ++i) {
+                memory.put(render, image);
+                memory.get(render);
+                memory.invalidate({render.source.digest, {}});
+                memory.debugDump(2);
+            }
+        });
     for (auto& thread : threads)
         thread.join();
     memory.invalidate({render.source.digest, {}});
@@ -424,11 +377,10 @@ void maintenanceRaceAndCorruption()
     ENSURE(disk.put(render, image));
     ENSURE(disk.get(render));
 
-    DiskEntry raw{
-        "raw",
-        {{"http", 1},
-         {"sourceDigest", QString::fromLatin1(render.source.digest.toHex())},
-         {"namespaceDigest", QString::fromLatin1(render.source.namespaceDigest.toHex())}}};
+    DiskEntry raw{"raw",
+                  {{"http", 1},
+                   {"sourceDigest", QString::fromLatin1(render.source.digest.toHex())},
+                   {"namespaceDigest", QString::fromLatin1(render.source.namespaceDigest.toHex())}}};
     ENSURE(backing->put(render.source.digest, raw));
     ENSURE(disk.invalidate({render.source.digest, {}}));
     ENSURE(!disk.get(render));
@@ -440,8 +392,7 @@ void maintenanceRaceAndCorruption()
     ENSURE(!backing->contains(render.source.digest));
 }
 
-void drainBoundaries()
-{
+void drainBoundaries() {
     auto memory = QSharedPointer<RenderedMemoryCache>::create(65536);
     auto loader = QSharedPointer<CachedSourceLoader>::create(nullptr);
     std::promise<void> entered, release;
@@ -449,25 +400,19 @@ void drainBoundaries()
     auto gate = release.get_future().share();
     std::atomic<bool> workerRejected{false};
     ImagePipeline* pointer = nullptr;
-    ImagePipeline pipeline(memory, loader,
-                           [&](const auto& bytes, const auto&, const auto& cancelled)
-                           {
-                               workerRejected = !pointer->waitForIdle(0);
-                               entered.set_value();
-                               gate.wait();
-                               return BoundedImageDecoder().decode(bytes, cancelled);
-                           });
+    ImagePipeline pipeline(memory, loader, [&](const auto& bytes, const auto&, const auto& cancelled) {
+        workerRejected = !pointer->waitForIdle(0);
+        entered.set_value();
+        gate.wait();
+        return BoundedImageDecoder().decode(bytes, cancelled);
+    });
     pointer = &pipeline;
     SourceRequest input;
     input.source.data = png();
     input.render.physicalTargetSize = QSize(16, 16);
     auto promise = QSharedPointer<std::promise<ImageResult>>::create();
     auto future = promise->get_future();
-    auto subscription = pipeline.request(input,
-                                         [promise](ImageResult result)
-                                         {
-                                             promise->set_value(std::move(result));
-                                         });
+    auto subscription = pipeline.request(input, [promise](ImageResult result) { promise->set_value(std::move(result)); });
     const bool started = entering.wait_for(std::chrono::seconds(10)) == std::future_status::ready;
     const bool busy = !pipeline.waitForIdle(0);
     release.set_value();
@@ -477,10 +422,9 @@ void drainBoundaries()
     ENSURE(workerRejected && pipeline.waitForIdle());
     ENSURE(!pipeline.waitForIdle(-1));
 }
-}
+} // namespace
 
-void fourthRoundTests()
-{
+void fourthRoundTests() {
     exactStatsAndDump();
     std::cout << "PASS exact cache stats and redacted dump\n";
     boundedDecode();

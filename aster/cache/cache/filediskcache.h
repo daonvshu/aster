@@ -9,21 +9,13 @@
 #include <functional>
 #include <mutex>
 
-namespace aster::cache
-{
-class FileDiskCache final : public IDiskCache
-{
+namespace aster::cache {
+class FileDiskCache final : public IDiskCache {
 public:
-    enum class WriteStage
-    {
-        TenPercent,
-        Half,
-        BeforeCommit
-    };
+    enum class WriteStage { TenPercent, Half, BeforeCommit };
     using WriteCheckpoint = std::function<bool(WriteStage)>;
 
-    FileDiskCache(QString root, qint64 budget, qint64 maxEntry,
-                  QSharedPointer<Clock> clock = QSharedPointer<SystemClock>::create(),
+    FileDiskCache(QString root, qint64 budget, qint64 maxEntry, QSharedPointer<Clock> clock = QSharedPointer<SystemClock>::create(),
                   WriteCheckpoint checkpoint = {}, QString directoryVersion = "v1");
     Result<DiskEntry> get(const QByteArray&) override;
     bool put(const QByteArray&, const DiskEntry&) override;
@@ -38,8 +30,7 @@ public:
     bool flushAccessTimes(const std::atomic<bool>* cancelled = nullptr);
 
 private:
-    struct IndexEntry
-    {
+    struct IndexEntry {
         qint64 cost;
         qint64 accessed;
         bool dirty = false;
@@ -59,4 +50,4 @@ private:
     QHash<QByteArray, IndexEntry> index_;
     DiskStats stats_;
 };
-}
+} // namespace aster::cache

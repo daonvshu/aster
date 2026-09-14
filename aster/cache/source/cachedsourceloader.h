@@ -6,10 +6,8 @@
 
 #include <QSharedPointer>
 
-namespace aster::cache
-{
-struct SourceCacheConfig
-{
+namespace aster::cache {
+struct SourceCacheConfig {
     bool encodedNetwork = true;
     bool encodedLocal = false;
     bool encodedData = false;
@@ -17,24 +15,18 @@ struct SourceCacheConfig
     bool encodedResource = true;
 };
 
-class CachedSourceLoader final : public IImageSourceLoader
-{
+class CachedSourceLoader final : public IImageSourceLoader {
 public:
-    CachedSourceLoader(QSharedPointer<EncodedMemoryCache> encoded,
-                       QSharedPointer<IDiskCache> disk = {},
-                       QSharedPointer<INetworkService> network = {},
-                       QSharedPointer<Clock> clock = QSharedPointer<SystemClock>::create(),
-                       SourceCacheConfig config = {});
+    CachedSourceLoader(QSharedPointer<EncodedMemoryCache> encoded, QSharedPointer<IDiskCache> disk = {}, QSharedPointer<INetworkService> network = {},
+                       QSharedPointer<Clock> clock = QSharedPointer<SystemClock>::create(), SourceCacheConfig config = {});
     Result<SourceKey> key(const ImageSource&) const override;
     void trimMemory(bool critical) override;
     SourceCacheStats cacheStats() const override;
     bool invalidate(const CacheSelector&) override;
-    Result<SourcePayload> load(const ImageSource&, const SourceKey&, const SourceLoadOptions&,
-                               const std::atomic<bool>&) override;
+    Result<SourcePayload> load(const ImageSource&, const SourceKey&, const SourceLoadOptions&, const std::atomic<bool>&) override;
 
 private:
-    Result<SourcePayload> network(const ImageSource&, const SourceKey&, const SourceLoadOptions&,
-                                  const std::atomic<bool>&);
+    Result<SourcePayload> network(const ImageSource&, const SourceKey&, const SourceLoadOptions&, const std::atomic<bool>&);
     bool encodedEnabled(ImageSource::Kind) const;
     QSharedPointer<EncodedMemoryCache> encoded_;
     QSharedPointer<IDiskCache> disk_;
@@ -45,4 +37,4 @@ private:
     NetworkStats networkStats_;
     std::atomic<quint64> diskExceptions_{0};
 };
-}
+} // namespace aster::cache

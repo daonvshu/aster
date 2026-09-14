@@ -13,31 +13,25 @@
 using namespace aster::cache;
 using namespace aster::gui;
 
-class HttpIntegrationTests : public QObject
-{
+class HttpIntegrationTests : public QObject {
     Q_OBJECT
 
     QString base_;
 
-    QSharedPointer<ImagePipeline> pipeline()
-    {
+    QSharedPointer<ImagePipeline> pipeline() {
         return QSharedPointer<ImagePipeline>::create(
-            QSharedPointer<RenderedMemoryCache>::create(1024 * 1024),
-            QSharedPointer<CachedSourceLoader>::create(
-                nullptr, nullptr, QSharedPointer<QtNetworkService>::create(5000)),
-            ImageRenderer{});
+                QSharedPointer<RenderedMemoryCache>::create(1024 * 1024),
+                QSharedPointer<CachedSourceLoader>::create(nullptr, nullptr, QSharedPointer<QtNetworkService>::create(5000)), ImageRenderer{});
     }
 
 private Q_SLOTS:
 
-    void initTestCase()
-    {
+    void initTestCase() {
         base_ = qEnvironmentVariable("ASTER_IMAGE_TEST_URL");
         QVERIFY2(!base_.isEmpty(), "Run using tests/http_server/run_tests.py");
     }
 
-    void transportFaults()
-    {
+    void transportFaults() {
         QtNetworkService service(5000);
         std::atomic<bool> cancelled{false};
         NetworkFetchOptions options;
@@ -45,52 +39,43 @@ private Q_SLOTS:
         QVERIFY(normal);
         QCOMPARE(normal.value->status, 200);
         QCOMPARE(QImage::fromData(normal.value->body).pixelColor(0, 0), QColor(Qt::red));
-        for (int status : {404, 500})
-        {
-            const auto result = service.fetch(QUrl(base_ + "/status/" + QString::number(status)),
-                                              options, cancelled);
+        for (int status : {404, 500}) {
+            const auto result = service.fetch(QUrl(base_ + "/status/" + QString::number(status)), options, cancelled);
             QVERIFY(result);
             QCOMPARE(result.value->status, status);
         }
-        const auto redirect =
-            service.fetch(QUrl(base_ + "/redirect/avatar.png"), options, cancelled);
+        const auto redirect = service.fetch(QUrl(base_ + "/redirect/avatar.png"), options, cancelled);
         QVERIFY(redirect);
         QCOMPARE(redirect.value->status, 302);
         QCOMPARE(redirect.value->headers.value("location"), QByteArray("/image/avatar.png"));
-        const auto wrong =
-            service.fetch(QUrl(base_ + "/wrong-content-type/avatar.png"), options, cancelled);
+        const auto wrong = service.fetch(QUrl(base_ + "/wrong-content-type/avatar.png"), options, cancelled);
         QVERIFY(wrong);
         QCOMPARE(wrong.value->headers.value("content-type"), QByteArray("text/plain"));
         QCOMPARE(wrong.value->body, normal.value->body);
         const auto stream = service.fetch(QUrl(base_ + "/stream/avatar.png"), options, cancelled);
         QVERIFY(stream);
         QCOMPARE(stream.value->body, normal.value->body);
-        const auto truncated =
-            service.fetch(QUrl(base_ + "/truncate/avatar.png"), options, cancelled);
+        const auto truncated = service.fetch(QUrl(base_ + "/truncate/avatar.png"), options, cancelled);
         QVERIFY(!truncated);
         QCOMPARE(truncated.error, ImageError::IoError);
         options.maxBytes = 1024;
-        const auto oversized =
-            service.fetch(QUrl(base_ + "/oversize/avatar.png"), options, cancelled);
+        const auto oversized = service.fetch(QUrl(base_ + "/oversize/avatar.png"), options, cancelled);
         QVERIFY(!oversized);
         QCOMPARE(oversized.error, ImageError::InvalidRequest);
         QtNetworkService impatient(100);
-        const auto timeout =
-            impatient.fetch(QUrl(base_ + "/delay/1/avatar.png"), options, cancelled);
+        const auto timeout = impatient.fetch(QUrl(base_ + "/delay/1/avatar.png"), options, cancelled);
         QVERIFY(!timeout);
         QCOMPARE(timeout.error, ImageError::IoError);
     }
 
-    void diskValidationAndCacheControl()
-    {
+    void diskValidationAndCacheControl() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
         auto disk = QSharedPointer<FileDiskCache>::create(directory.path(), 1024 * 1024, 65536);
         auto network = QSharedPointer<QtNetworkService>::create(5000);
         CachedSourceLoader loader(nullptr, disk, network);
         std::atomic<bool> cancelled{false};
-        auto load = [&](const QString& endpoint)
-        {
+        auto load = [&](const QString& endpoint) {
             const auto source = ImageSource::fromString(base_ + endpoint);
             const auto key = loader.key(*source.value);
             return loader.load(*source.value, *key.value, {}, cancelled);
@@ -117,17 +102,14 @@ private Q_SLOTS:
         QVERIFY(!disk->contains(loader.key(*source.value).value->digest));
     }
 
-    void widgetErrors_data()
-    {
+    void widgetErrors_data() {
         QTest::addColumn<QString>("endpoint");
         for (const auto& endpoint :
-             {"/status/404", "/status/500", "/redirect/avatar.png", "/corrupt/avatar.png",
-              "/truncate/avatar.png", "/oversize/avatar.png"})
+             {"/status/404", "/status/500", "/redirect/avatar.png", "/corrupt/avatar.png", "/truncate/avatar.png", "/oversize/avatar.png"})
             QTest::newRow(endpoint) << QString::fromLatin1(endpoint);
     }
 
-    void widgetErrors()
-    {
+    void widgetErrors() {
         QFETCH(QString, endpoint);
         ImageBox box;
         box.resize(32, 32);
@@ -141,8 +123,7 @@ private Q_SLOTS:
         QVERIFY(box.image().isNull());
     }
 
-    void wrongContentTypeUsesDecoder()
-    {
+    void wrongContentTypeUsesDecoder() {
         ImageBox box;
         box.resize(32, 32);
         box.setPipeline(pipeline());
@@ -151,8 +132,7 @@ private Q_SLOTS:
         QCOMPARE(box.image().pixelColor(0, 0), QColor(Qt::red));
     }
 
-    void delayedRaceCancelAndDestroy()
-    {
+    void delayedRaceCancelAndDestroy() {
         auto shared = pipeline();
         ImageBox box;
         box.resize(32, 32);

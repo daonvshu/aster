@@ -21,44 +21,36 @@
 using namespace aster::cache;
 using namespace aster::cache::testing;
 
-#define CHECK(condition)                                                                           \
-    do                                                                                             \
-    {                                                                                              \
-        if (!(condition))                                                                          \
-            throw std::runtime_error(std::string(__FILE__) + ":" + std::to_string(__LINE__) +      \
-                                     " " #condition);                                              \
+#define CHECK(condition)                                                                                                                                       \
+    do {                                                                                                                                                       \
+        if (!(condition))                                                                                                                                      \
+            throw std::runtime_error(std::string(__FILE__) + ":" + std::to_string(__LINE__) + " " #condition);                                                 \
     } while (false)
 
-SourceKey source(int id = 0)
-{
-    auto result =
-        KeyBuilder().network(QUrl(QString("https://example.test/%1?token=private").arg(id)));
+SourceKey source(int id = 0) {
+    auto result = KeyBuilder().network(QUrl(QString("https://example.test/%1?token=private").arg(id)));
     CHECK(result);
     return *result.value;
 }
 
-RenderOptions options(int size = 8)
-{
+RenderOptions options(int size = 8) {
     RenderOptions o;
     o.physicalTargetSize = QSize(size, size);
     o.processors = {{"test-resize", 1, "nearest"}};
     return o;
 }
 
-RenderKey key(int id = 0)
-{
+RenderKey key(int id = 0) {
     return *KeyBuilder().render(source(id), options()).value;
 }
 
-QImage pixels(int size = 8)
-{
+QImage pixels(int size = 8) {
     QImage image(size, size, QImage::Format_ARGB32);
     image.fill(Qt::red);
     return image;
 }
 
-void keys()
-{
+void keys() {
     KeyBuilder builder;
     CHECK(source() == source());
     const auto s = source();
@@ -97,8 +89,7 @@ void keys()
     CHECK(!builder.render({}, options()));
 
     const QUrl url("https://example.test/image?token=a&size=1");
-    CHECK(!(*builder.network(url).value ==
-            *builder.network(QUrl("https://example.test/image?token=b&size=1")).value));
+    CHECK(!(*builder.network(url).value == *builder.network(QUrl("https://example.test/image?token=b&size=1")).value));
 
     KeyContext a, b;
     b.tenant = "other";
@@ -112,14 +103,11 @@ void keys()
     b.contentVariant = "language:en";
     CHECK(!(*builder.network(url, a).value == *builder.network(url, b).value));
 
-    KeyBuilder normalized(
-        [](QUrl u)
-        {
-            u.setFragment(QString());
-            return u;
-        });
-    CHECK(*normalized.network(QUrl("https://example.test/image#a")).value ==
-          *normalized.network(QUrl("https://example.test/image#b")).value);
+    KeyBuilder normalized([](QUrl u) {
+        u.setFragment(QString());
+        return u;
+    });
+    CHECK(*normalized.network(QUrl("https://example.test/image#a")).value == *normalized.network(QUrl("https://example.test/image#b")).value);
     CHECK(!builder.network(QUrl("not-a-url")));
 
     o = options();
@@ -158,8 +146,7 @@ void keys()
     CHECK(!builder.localFile(dir.filePath("absent")));
 }
 
-void memory()
-{
+void memory() {
     auto clock = QSharedPointer<FakeClock>::create(100);
     const QImage image = pixels();
     const auto cost = RenderedMemoryCache::costOf(image);
@@ -223,8 +210,7 @@ void memory()
     CHECK(cache.get(key()).value->pixelColor(0, 0) == QColor(Qt::red));
 }
 
-void memoryConcurrency()
-{
+void memoryConcurrency() {
     const auto image = pixels();
     const auto cost = RenderedMemoryCache::costOf(image);
     RenderedMemoryCache cache(cost * 100);
@@ -234,15 +220,11 @@ void memoryConcurrency()
     std::vector<std::thread> threads;
     std::atomic<bool> good{true};
     for (int n = 0; n < 8; ++n)
-        threads.emplace_back(
-            [&, n]
-            {
-                std::mt19937 rng(100 + n);
-                for (int i = 0; i < 2000; ++i)
-                {
-                    const auto& k = keys[rng() % keys.size()];
-                    switch (rng() % 6)
-                    {
+        threads.emplace_back([&, n] {
+            std::mt19937 rng(100 + n);
+            for (int i = 0; i < 2000; ++i) {
+                const auto& k = keys[rng() % keys.size()];
+                switch (rng() % 6) {
                     case 0:
                         cache.put(k, image);
                         break;
@@ -261,12 +243,12 @@ void memoryConcurrency()
                     case 5:
                         cache.clear();
                         break;
-                    }
-                    const auto s = cache.stats();
-                    if (s.totalBytes != s.entryCount * cost || s.totalBytes > s.maxBytes)
-                        good = false;
                 }
-            });
+                const auto s = cache.stats();
+                if (s.totalBytes != s.entryCount * cost || s.totalBytes > s.maxBytes)
+                    good = false;
+            }
+        });
     for (auto& t : threads)
         t.join();
     CHECK(good);
@@ -274,22 +256,16 @@ void memoryConcurrency()
     CHECK(cache.stats().totalBytes == 0);
 }
 
-void registry()
-{
+void registry() {
     InFlightRegistry<int, int> registry;
     std::atomic<int> loads{0}, cancels{0}, successes{0}, cancelled{0};
     InFlightRegistry<int, int>::Completion done;
-    auto start = [&](auto completion) -> CancelAction
-    {
+    auto start = [&](auto completion) -> CancelAction {
         ++loads;
         done = completion;
-        return [&]
-        {
-            ++cancels;
-        };
+        return [&] { ++cancels; };
     };
-    auto callback = [&](Result<int> r)
-    {
+    auto callback = [&](Result<int> r) {
         if (r)
             ++successes;
         else if (r.error == ImageError::Cancelled)
@@ -298,11 +274,7 @@ void registry()
     std::vector<Subscription> subscribers(100);
     std::vector<std::thread> threads;
     for (int i = 0; i < 100; ++i)
-        threads.emplace_back(
-            [&, i]
-            {
-                subscribers[i] = registry.subscribe(1, start, callback);
-            });
+        threads.emplace_back([&, i] { subscribers[i] = registry.subscribe(1, start, callback); });
     for (auto& t : threads)
         t.join();
     CHECK(loads == 1);
@@ -336,41 +308,30 @@ void registry()
 
     int errors = 0;
     auto exception = registry.subscribe(
-        2,
-        [](auto) -> CancelAction
-        {
-            throw std::runtime_error("fail");
-        },
-        [&](Result<int> r)
-        {
-            if (r.error == ImageError::ProcessingError)
-                ++errors;
-        });
+            2, [](auto) -> CancelAction { throw std::runtime_error("fail"); },
+            [&](Result<int> r) {
+                if (r.error == ImageError::ProcessingError)
+                    ++errors;
+            });
     CHECK(errors == 1);
     CHECK(registry.count() == 0);
 
-    auto badCallback = registry.subscribe(3, start,
-                                          [](auto)
-                                          {
-                                              throw std::runtime_error("callback");
-                                          });
+    auto badCallback = registry.subscribe(3, start, [](auto) { throw std::runtime_error("callback"); });
     auto goodCallback = registry.subscribe(3, start, callback);
     done(Result<int>::success(1));
     CHECK(registry.count() == 0);
 
     int synchronous = 0;
     auto sync = registry.subscribe(
-        4,
-        [](auto finish) -> CancelAction
-        {
-            finish(Result<int>::success(1));
-            return {};
-        },
-        [&](auto r)
-        {
-            if (r)
-                ++synchronous;
-        });
+            4,
+            [](auto finish) -> CancelAction {
+                finish(Result<int>::success(1));
+                return {};
+            },
+            [&](auto r) {
+                if (r)
+                    ++synchronous;
+            });
     CHECK(synchronous == 1);
 
     // Shutdown while a starter has not yet returned its cancellation action.
@@ -380,37 +341,21 @@ void registry()
     bool entered = false, released = false;
     std::atomic<int> lateCancel{0};
     Subscription delayed;
-    std::thread worker(
-        [&]
-        {
-            delayed = slow.subscribe(
+    std::thread worker([&] {
+        delayed = slow.subscribe(
                 1,
-                [&](auto) -> CancelAction
-                {
+                [&](auto) -> CancelAction {
                     std::unique_lock<std::mutex> lock(mutex);
                     entered = true;
                     cv.notify_all();
-                    cv.wait(lock,
-                            [&]
-                            {
-                                return released;
-                            });
-                    return [&]
-                    {
-                        ++lateCancel;
-                    };
+                    cv.wait(lock, [&] { return released; });
+                    return [&] { ++lateCancel; };
                 },
-                [](auto)
-                {
-                });
-        });
+                [](auto) {});
+    });
     {
         std::unique_lock<std::mutex> lock(mutex);
-        cv.wait(lock,
-                [&]
-                {
-                    return entered;
-                });
+        cv.wait(lock, [&] { return entered; });
     }
     slow.shutdown();
     {
@@ -423,38 +368,32 @@ void registry()
     CHECK(slow.count() == 0);
 }
 
-void pipeline()
-{
+void pipeline() {
     FakeNetwork network;
     EventRecorder recorder;
     auto cache = QSharedPointer<RenderedMemoryCache>::create(1024 * 1024);
     std::atomic<int> renders{0}, success{0}, errors{0};
     ImagePipeline pipeline(
-        cache, network.task(),
-        [&](const QByteArray&, const RenderOptions& o, const auto&)
-        {
-            ++renders;
-            return ImageResult::success(pixels(o.physicalTargetSize.width()));
-        },
-        recorder.sink());
+            cache, network.task(),
+            [&](const QByteArray&, const RenderOptions& o, const auto&) {
+                ++renders;
+                return ImageResult::success(pixels(o.physicalTargetSize.width()));
+            },
+            recorder.sink());
     ImageRequest a{source(), options(), {}};
     auto b = a;
     b.render = options(16);
     std::vector<Subscription> subs(100);
     std::vector<std::thread> threads;
     for (int i = 0; i < 100; ++i)
-        threads.emplace_back(
-            [&, i]
-            {
-                subs[i] = pipeline.request(i % 2 ? a : b,
-                                           [&](auto r)
-                                           {
-                                               if (r)
-                                                   ++success;
-                                               else
-                                                   ++errors;
-                                           });
+        threads.emplace_back([&, i] {
+            subs[i] = pipeline.request(i % 2 ? a : b, [&](auto r) {
+                if (r)
+                    ++success;
+                else
+                    ++errors;
             });
+        });
     for (auto& t : threads)
         t.join();
     CHECK(network.loadCount() == 1);
@@ -465,60 +404,46 @@ void pipeline()
     CHECK(errors == 0);
     CHECK(pipeline.stats().sourceInFlight == 0);
     CHECK(pipeline.stats().renderInFlight == 0);
-    auto hit = pipeline.request(a,
-                                [&](auto r)
-                                {
-                                    CHECK(r.source == CacheResultSource::RenderedMemory);
-                                    ++success;
-                                });
+    auto hit = pipeline.request(a, [&](auto r) {
+        CHECK(r.source == CacheResultSource::RenderedMemory);
+        ++success;
+    });
     CHECK(success == 101);
     CHECK(network.loadCount() == 1);
     a.cache.read = CacheReadPolicy::CacheOnly;
     a.source = source(999);
-    auto miss = pipeline.request(a,
-                                 [&](auto r)
-                                 {
-                                     if (r.error == ImageError::CacheMiss)
-                                         ++errors;
-                                 });
+    auto miss = pipeline.request(a, [&](auto r) {
+        if (r.error == ImageError::CacheMiss)
+            ++errors;
+    });
     CHECK(errors == 1);
     CHECK(network.loadCount() == 1);
 
     a = {source(2), options(), {}};
     a.cache.read = CacheReadPolicy::NoCache;
     a.cache.write = CacheWritePolicy::NoStore;
-    auto noStore = pipeline.request(a,
-                                    [](auto)
-                                    {
-                                    });
+    auto noStore = pipeline.request(a, [](auto) {});
     network.completeAll();
     CHECK(!cache->get(*KeyBuilder().render(a.source, a.render).value));
 
     a = {source(3), options(), {}};
-    auto first = pipeline.request(a,
-                                  [&](auto r)
-                                  {
-                                      if (!r)
-                                          ++errors;
-                                  });
+    auto first = pipeline.request(a, [&](auto r) {
+        if (!r)
+            ++errors;
+    });
     network.completeAll(Result<QByteArray>::failure(ImageError::IoError));
     CHECK(pipeline.stats().renderInFlight == 0);
-    auto second = pipeline.request(a,
-                                   [&](auto r)
-                                   {
-                                       if (r)
-                                           ++success;
-                                   });
+    auto second = pipeline.request(a, [&](auto r) {
+        if (r)
+            ++success;
+    });
     network.completeAll();
     CHECK(success == 102);
 
     a.source = source(4);
     std::vector<Subscription> cancelled;
     for (int i = 0; i < 100; ++i)
-        cancelled.push_back(pipeline.request(a,
-                                             [](auto)
-                                             {
-                                             }));
+        cancelled.push_back(pipeline.request(a, [](auto) {}));
     cancelled.clear();
     CHECK(network.cancelCount() == 1);
     CHECK(pipeline.stats().sourceInFlight == 0);
@@ -529,84 +454,62 @@ void pipeline()
         CHECK(event.keyDigest.size() == 32);
 
     FakeSourceLoader throwingSource;
-    ImagePipeline throwing(cache, throwingSource.task(),
-                           [](const auto&, const auto&, const auto&) -> ImageResult
-                           {
-                               throw std::runtime_error("processor");
-                           });
+    ImagePipeline throwing(cache, throwingSource.task(), [](const auto&, const auto&, const auto&) -> ImageResult { throw std::runtime_error("processor"); });
     int failures = 0;
-    auto fail = throwing.request(a,
-                                 [&](auto r)
-                                 {
-                                     if (r.error == ImageError::ProcessingError)
-                                         ++failures;
-                                 });
+    auto fail = throwing.request(a, [&](auto r) {
+        if (r.error == ImageError::ProcessingError)
+            ++failures;
+    });
     throwingSource.completeAll();
     CHECK(failures == 1);
     CHECK(throwing.stats().renderInFlight == 0);
-    auto failAgain = throwing.request(a,
-                                      [](auto)
-                                      {
-                                      });
+    auto failAgain = throwing.request(a, [](auto) {});
     throwingSource.completeAll();
     CHECK(throwingSource.loadCount() == 2);
 }
 
-void randomized()
-{
+void randomized() {
     InFlightRegistry<int, int> registry;
     std::mutex pendingMutex;
     std::vector<InFlightRegistry<int, int>::Completion> pending;
     std::atomic<int> callbacks{0};
     std::atomic<bool> producersDone{false};
-    auto starter = [&](auto done) -> CancelAction
-    {
+    auto starter = [&](auto done) -> CancelAction {
         std::lock_guard<std::mutex> lock(pendingMutex);
         pending.push_back(std::move(done));
         return {};
     };
-    std::thread completer(
-        [&]
-        {
-            while (true)
+    std::thread completer([&] {
+        while (true) {
+            std::vector<InFlightRegistry<int, int>::Completion> batch;
             {
-                std::vector<InFlightRegistry<int, int>::Completion> batch;
-                {
-                    std::lock_guard<std::mutex> lock(pendingMutex);
-                    batch.swap(pending);
-                }
-                if (batch.empty() && producersDone)
-                    break;
-                for (auto& done : batch)
-                {
-                    done(Result<int>::success(1));
-                    done(Result<int>::failure(ImageError::IoError));
-                }
-                std::this_thread::yield();
+                std::lock_guard<std::mutex> lock(pendingMutex);
+                batch.swap(pending);
             }
-        });
+            if (batch.empty() && producersDone)
+                break;
+            for (auto& done : batch) {
+                done(Result<int>::success(1));
+                done(Result<int>::failure(ImageError::IoError));
+            }
+            std::this_thread::yield();
+        }
+    });
     std::vector<std::thread> producers;
     for (int n = 0; n < 8; ++n)
-        producers.emplace_back(
-            [&, n]
-            {
-                std::mt19937 rng(42 + n);
-                std::vector<Subscription> retained;
-                for (int i = 0; i < 1250; ++i)
-                {
-                    auto sub = registry.subscribe(int(rng() % 64), starter,
-                                                  [&](auto)
-                                                  {
-                                                      ++callbacks;
-                                                  });
-                    if (rng() % 2)
-                        sub.cancel();
-                    else
-                        retained.push_back(std::move(sub));
-                    if (retained.size() > 20)
-                        retained.clear();
-                }
-            });
+        producers.emplace_back([&, n] {
+            std::mt19937 rng(42 + n);
+            std::vector<Subscription> retained;
+            for (int i = 0; i < 1250; ++i) {
+                auto sub = registry.subscribe(int(rng() % 64), starter, [&](auto) { ++callbacks; });
+                if (rng() % 2)
+                    sub.cancel();
+                else
+                    retained.push_back(std::move(sub));
+                if (retained.size() > 20)
+                    retained.clear();
+            }
+        });
     for (auto& t : producers)
         t.join();
     producersDone = true;
@@ -623,19 +526,16 @@ void friendlyRequestTests();
 void resamplerTests();
 int diskCrashProbe(const QStringList&);
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
     QCoreApplication app(argc, argv);
     const auto probe = diskCrashProbe(app.arguments());
     if (probe >= 0)
         return probe;
-    if (app.arguments().contains("--key-digest"))
-    {
+    if (app.arguments().contains("--key-digest")) {
         std::cout << key().digest.toHex().constData() << '\n';
         return 0;
     }
-    try
-    {
+    try {
         keys();
         std::cout << "PASS keys\n";
         memory();
@@ -654,9 +554,7 @@ int main(int argc, char** argv)
         friendlyRequestTests();
         resamplerTests();
         imageServiceTests();
-    }
-    catch (const std::exception& error)
-    {
+    } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;
     }

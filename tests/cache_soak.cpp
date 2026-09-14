@@ -29,21 +29,16 @@
 
 using namespace aster::cache;
 
-namespace
-{
-void require(bool condition, const char* message)
-{
+namespace {
+void require(bool condition, const char* message) {
     if (!condition)
         throw std::runtime_error(message);
 }
 
-qint64 residentBytes()
-{
+qint64 residentBytes() {
 #ifdef Q_OS_WIN
     PROCESS_MEMORY_COUNTERS info{};
-    return GetProcessMemoryInfo(GetCurrentProcess(), &info, sizeof(info))
-               ? qint64(info.WorkingSetSize)
-               : -1;
+    return GetProcessMemoryInfo(GetCurrentProcess(), &info, sizeof(info)) ? qint64(info.WorkingSetSize) : -1;
 #elif defined(Q_OS_LINUX)
     QFile file("/proc/self/statm");
     if (!file.open(QIODevice::ReadOnly))
@@ -55,13 +50,11 @@ qint64 residentBytes()
 #endif
 }
 
-class Network final : public INetworkService
-{
+class Network final : public INetworkService {
 public:
     QByteArray bytes;
 
-    Network()
-    {
+    Network() {
         QImage image(16, 16, QImage::Format_ARGB32);
         image.fill(Qt::green);
         QBuffer buffer(&bytes);
@@ -69,42 +62,34 @@ public:
         require(image.save(&buffer, "PNG"), "PNG encoding failed");
     }
 
-    Result<NetworkResponse> fetch(const QUrl&, const NetworkFetchOptions&,
-                                  const std::atomic<bool>& cancelled) override
-    {
+    Result<NetworkResponse> fetch(const QUrl&, const NetworkFetchOptions&, const std::atomic<bool>& cancelled) override {
         if (cancelled.load())
             return Result<NetworkResponse>::failure(ImageError::Cancelled);
         return Result<NetworkResponse>::success({200, {{"cache-control", "max-age=60"}}, bytes});
     }
 };
 
-void checkBudget(const CacheStats& stats)
-{
+void checkBudget(const CacheStats& stats) {
     require(stats.totalBytes >= 0 && stats.totalBytes <= stats.maxBytes, "Memory budget exceeded");
 }
 
-void checkBudget(const DiskStats& stats)
-{
+void checkBudget(const DiskStats& stats) {
     require(stats.totalBytes >= 0 && stats.totalBytes <= stats.maxBytes, "Disk budget exceeded");
 }
 
-int run(int iterations, unsigned seed)
-{
+int run(int iterations, unsigned seed) {
     QTemporaryDir directory;
     require(directory.isValid(), "Temporary directory unavailable");
     auto memory = QSharedPointer<RenderedMemoryCache>::create(32768);
     auto encoded = QSharedPointer<EncodedMemoryCache>::create(16384, 8192);
     auto raw = QSharedPointer<FileDiskCache>::create(directory.filePath("raw"), 65536, 8192);
-    auto backing =
-        QSharedPointer<FileDiskCache>::create(directory.filePath("rendered"), 65536, 8192);
+    auto backing = QSharedPointer<FileDiskCache>::create(directory.filePath("rendered"), 65536, 8192);
     auto disk = QSharedPointer<RenderedDiskCache>::create(backing);
     auto active = QSharedPointer<ActiveResourceStore>::create(16384);
-    auto loader =
-        QSharedPointer<CachedSourceLoader>::create(encoded, raw, QSharedPointer<Network>::create());
+    auto loader = QSharedPointer<CachedSourceLoader>::create(encoded, raw, QSharedPointer<Network>::create());
     auto callbacks = QSharedPointer<std::atomic<int>>::create(0);
     ImagePipeline pipeline(memory, loader,
-                           [](const auto& bytes, const auto& options, const auto& cancelled)
-                           {
+                           [](const auto& bytes, const auto& options, const auto& cancelled) {
                                auto result = BoundedImageDecoder().decode(bytes, cancelled);
                                if (result)
                                    result.value = result.value->scaled(options.physicalTargetSize);
@@ -117,17 +102,14 @@ int run(int iterations, unsigned seed)
     qint64 peakRss = 0;
     int success = 0, cancelled = 0, misses = 0;
     std::cout << "completed,success,cancelled,cache_miss,rss_bytes,peak_sampled_rss_bytes,files\n";
-    for (int base = 0; base < iterations; base += 32)
-    {
+    for (int base = 0; base < iterations; base += 32) {
         std::vector<std::future<ImageResult>> futures;
         std::vector<Subscription> subscriptions;
-        for (int n = base; n < std::min(base + 32, iterations); ++n)
-        {
+        for (int n = base; n < std::min(base + 32, iterations); ++n) {
             SourceRequest request;
             request.source.kind = ImageSource::Kind::Network;
             request.source.context.nameSpace = "soak/" + QByteArray::number(random() % 4);
-            request.source.url =
-                QUrl(QString("https://soak.test/%1?token=hidden").arg(random() % 16));
+            request.source.url = QUrl(QString("https://soak.test/%1?token=hidden").arg(random() % 16));
             request.render.physicalTargetSize = QSize(16 + int(random() % 2) * 16, 16);
             request.diskStrategy = DiskCacheStrategy::All;
             const auto policy = random() % 10;
@@ -140,28 +122,22 @@ int run(int iterations, unsigned seed)
 
             auto promise = QSharedPointer<std::promise<ImageResult>>::create();
             futures.push_back(promise->get_future());
-            subscriptions.push_back(pipeline.request(request,
-                                                     [promise, callbacks](ImageResult result)
-                                                     {
-                                                         ++*callbacks;
-                                                         promise->set_value(std::move(result));
-                                                     }));
+            subscriptions.push_back(pipeline.request(request, [promise, callbacks](ImageResult result) {
+                ++*callbacks;
+                promise->set_value(std::move(result));
+            }));
             if (random() % 4 == 0)
                 subscriptions.back().cancel();
         }
 
-        for (auto& future : futures)
-        {
-            require(future.wait_for(std::chrono::seconds(30)) == std::future_status::ready,
-                    "Request completion timeout");
+        for (auto& future : futures) {
+            require(future.wait_for(std::chrono::seconds(30)) == std::future_status::ready, "Request completion timeout");
             auto result = future.get();
-            if (result)
-            {
+            if (result) {
                 ++success;
                 if (random() % 8 == 0)
                     retained.push_back(result.handle);
-            }
-            else if (result.error == ImageError::Cancelled)
+            } else if (result.error == ImageError::Cancelled)
                 ++cancelled;
             else if (result.error == ImageError::CacheMiss)
                 ++misses;
@@ -174,12 +150,10 @@ int run(int iterations, unsigned seed)
             retained.clear();
 
         if (random() % 4 == 0)
-            require(pipeline.clearNamespace("soak/" + QByteArray::number(random() % 4)),
-                    "Namespace invalidation failed");
+            require(pipeline.clearNamespace("soak/" + QByteArray::number(random() % 4)), "Namespace invalidation failed");
         if (random() % 8 == 0)
             pipeline.trimMemory(MemoryPressure::Low);
-        if (random() % 16 == 0)
-        {
+        if (random() % 16 == 0) {
             pipeline.trimMemory(MemoryPressure::Critical);
             active->setMaxCost(16384);
         }
@@ -189,21 +163,18 @@ int run(int iterations, unsigned seed)
         checkBudget(stats.encodedMemory);
         checkBudget(stats.rawDisk);
         checkBudget(stats.renderedDisk);
-        require(stats.active.bytes >= 0 && stats.active.bytes <= stats.active.maxBytes,
-                "Active tracking budget exceeded");
+        require(stats.active.bytes >= 0 && stats.active.bytes <= stats.active.maxBytes, "Active tracking budget exceeded");
         const auto rss = residentBytes();
         peakRss = std::max(peakRss, rss);
-        if (base % 1024 == 0 || base + 32 >= iterations)
-        {
+        if (base % 1024 == 0 || base + 32 >= iterations) {
             int files = 0;
             QDirIterator entries(directory.path(), QDir::Files, QDirIterator::Subdirectories);
-            while (entries.hasNext())
-            {
+            while (entries.hasNext()) {
                 entries.next();
                 ++files;
             }
-            std::cout << std::min(base + 32, iterations) << ',' << success << ',' << cancelled
-                      << ',' << misses << ',' << rss << ',' << peakRss << ',' << files << '\n';
+            std::cout << std::min(base + 32, iterations) << ',' << success << ',' << cancelled << ',' << misses << ',' << rss << ',' << peakRss << ',' << files
+                      << '\n';
         }
     }
 
@@ -214,16 +185,14 @@ int run(int iterations, unsigned seed)
     require(raw->clear() && backing->clear(), "Final disk clear failed");
     return 0;
 }
-}
+} // namespace
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
     QCoreApplication app(argc, argv);
     int iterations = 3000;
     unsigned seed = 20260909;
     const auto args = app.arguments();
-    for (int i = 1; i < args.size(); ++i)
-    {
+    for (int i = 1; i < args.size(); ++i) {
         const auto option = args[i];
         if ((option != "--iterations" && option != "--seed") || i + 1 >= args.size())
             return 2;
@@ -236,12 +205,9 @@ int main(int argc, char** argv)
         else
             seed = value;
     }
-    try
-    {
+    try {
         return run(iterations, seed);
-    }
-    catch (const std::exception& error)
-    {
+    } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;
     }

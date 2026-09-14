@@ -9,19 +9,11 @@
 
 #include <atomic>
 
-namespace aster::cache
-{
+namespace aster::cache {
 using HttpHeaders = QMap<QByteArray, QByteArray>;
 
-struct ImageSource
-{
-    enum class Kind
-    {
-        Local,
-        Network,
-        Data,
-        Resource
-    };
+struct ImageSource {
+    enum class Kind { Local, Network, Data, Resource };
     Kind kind = Kind::Data;
     QUrl url;
     QByteArray data;
@@ -33,8 +25,7 @@ struct ImageSource
     static Result<ImageSource> fromString(const QString&, const KeyContext& = {});
 };
 
-struct SourcePayload
-{
+struct SourcePayload {
     QByteArray bytes;
     QByteArray contentType;
     HttpHeaders headers;
@@ -43,35 +34,29 @@ struct SourcePayload
     bool mustRevalidate = false;
 };
 
-struct SourceLoadOptions
-{
+struct SourceLoadOptions {
     ImageCachePolicy cache;
     qint64 maxBytes = 32 * 1024 * 1024;
     bool enableSourceDisk = true;
 };
 
-class IImageSourceLoader
-{
+class IImageSourceLoader {
 public:
     virtual ~IImageSourceLoader() = default;
 
-    virtual void trimMemory(bool)
-    {
+    virtual void trimMemory(bool) {
     }
 
     virtual Result<SourceKey> key(const ImageSource&) const = 0;
 
-    virtual SourceCacheStats cacheStats() const
-    {
+    virtual SourceCacheStats cacheStats() const {
         return {};
     }
 
-    virtual bool invalidate(const CacheSelector&)
-    {
+    virtual bool invalidate(const CacheSelector&) {
         return false;
     }
 
-    virtual Result<SourcePayload> load(const ImageSource&, const SourceKey&,
-                                       const SourceLoadOptions&, const std::atomic<bool>&) = 0;
+    virtual Result<SourcePayload> load(const ImageSource&, const SourceKey&, const SourceLoadOptions&, const std::atomic<bool>&) = 0;
 };
-}
+} // namespace aster::cache

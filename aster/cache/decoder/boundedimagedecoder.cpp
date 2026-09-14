@@ -5,21 +5,17 @@
 
 #include <stdexcept>
 
-namespace aster::cache
-{
-BoundedImageDecoder::BoundedImageDecoder(DecodeLimits limits) : limits_(std::move(limits))
-{
-    if (limits_.maxEncodedBytes <= 0 || limits_.maxSide <= 0 || limits_.maxPixels < 0 ||
-        limits_.maxDecodedBytes < 0 || limits_.allowedFormats.isEmpty())
+namespace aster::cache {
+BoundedImageDecoder::BoundedImageDecoder(DecodeLimits limits)
+    : limits_(std::move(limits)) {
+    if (limits_.maxEncodedBytes <= 0 || limits_.maxSide <= 0 || limits_.maxPixels < 0 || limits_.maxDecodedBytes < 0 || limits_.allowedFormats.isEmpty())
         throw std::invalid_argument("Invalid decode limits");
 
     for (auto& format : limits_.allowedFormats)
         format = format.toLower();
 }
 
-ImageResult BoundedImageDecoder::decode(const QByteArray& bytes, const std::atomic<bool>& cancelled,
-                                        QSize expectedSize) const
-{
+ImageResult BoundedImageDecoder::decode(const QByteArray& bytes, const std::atomic<bool>& cancelled, QSize expectedSize) const {
     if (cancelled.load())
         return ImageResult::failure(ImageError::Cancelled);
 
@@ -29,8 +25,7 @@ ImageResult BoundedImageDecoder::decode(const QByteArray& bytes, const std::atom
     if (bytes.isEmpty())
         return ImageResult::failure(ImageError::CorruptedEntry, "Empty image");
 
-    try
-    {
+    try {
         QBuffer buffer;
         buffer.setData(bytes);
         buffer.open(QIODevice::ReadOnly);
@@ -50,8 +45,7 @@ ImageResult BoundedImageDecoder::decode(const QByteArray& bytes, const std::atom
 
         // Qt6 can decode up to 128 bits per pixel. Account for that before allocating.
         const qint64 pixels = qint64(size.width()) * size.height();
-        if (size.width() > limits_.maxSide || size.height() > limits_.maxSide ||
-            (limits_.maxPixels > 0 && pixels > limits_.maxPixels) ||
+        if (size.width() > limits_.maxSide || size.height() > limits_.maxSide || (limits_.maxPixels > 0 && pixels > limits_.maxPixels) ||
             (limits_.maxDecodedBytes > 0 && pixels > limits_.maxDecodedBytes / 16))
             return ImageResult::failure(ImageError::ResourceLimit, "Decoded image limit exceeded");
 
@@ -72,14 +66,10 @@ ImageResult BoundedImageDecoder::decode(const QByteArray& bytes, const std::atom
             return ImageResult::failure(ImageError::ResourceLimit, "Decoded byte limit exceeded");
 
         return ImageResult::success(std::move(image), CacheResultSource::Loaded);
-    }
-    catch (const std::bad_alloc&)
-    {
+    } catch (const std::bad_alloc&) {
         return ImageResult::failure(ImageError::ResourceLimit);
-    }
-    catch (...)
-    {
+    } catch (...) {
         return ImageResult::failure(ImageError::CorruptedEntry);
     }
 }
-}
+} // namespace aster::cache

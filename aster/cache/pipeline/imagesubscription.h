@@ -8,12 +8,10 @@
 
 Q_DECLARE_METATYPE(aster::cache::ImageResult)
 
-namespace aster::cache
-{
+namespace aster::cache {
 class ImagePipeline;
 
-class ImageSubscription final : public QObject
-{
+class ImageSubscription final : public QObject {
     Q_OBJECT
 
 public:
@@ -39,4 +37,4 @@ private:
     bool cancelled_ = false;
     bool finished_ = false;
 };
-}
+} // namespace aster::cache

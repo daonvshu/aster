@@ -20,24 +20,20 @@
 
 using namespace aster;
 
-class GalleryTests : public QObject
-{
+class GalleryTests : public QObject {
     Q_OBJECT
 
 private Q_SLOTS:
 #ifdef ASTER_GALLERY_NETWORK
-    void httpPanelIntegration()
-    {
+    void httpPanelIntegration() {
         if (qEnvironmentVariableIsEmpty("ASTER_IMAGE_TEST_URL"))
             QSKIP("Run with the Python HTTP test launcher");
         QTemporaryDir directory;
         auto pipeline = QSharedPointer<cache::ImagePipeline>::create(
-            QSharedPointer<cache::RenderedMemoryCache>::create(16 * 1024 * 1024),
-            QSharedPointer<cache::CachedSourceLoader>::create(
-                nullptr,
-                QSharedPointer<cache::FileDiskCache>::create(directory.path(), 1024 * 1024, 65536),
-                QSharedPointer<cache::QtNetworkService>::create(5000)),
-            cache::ImageRenderer{});
+                QSharedPointer<cache::RenderedMemoryCache>::create(16 * 1024 * 1024),
+                QSharedPointer<cache::CachedSourceLoader>::create(nullptr, QSharedPointer<cache::FileDiskCache>::create(directory.path(), 1024 * 1024, 65536),
+                                                                  QSharedPointer<cache::QtNetworkService>::create(5000)),
+                cache::ImageRenderer{});
         gallery::GalleryWindow window(pipeline);
         window.show();
         auto* scenario = window.findChild<QComboBox*>("httpScenario");
@@ -65,11 +61,9 @@ private Q_SLOTS:
     }
 #endif
 
-    void windowFolderLoading()
-    {
+    void windowFolderLoading() {
         QTemporaryDir directory;
-        for (int i = 0; i < 24; ++i)
-        {
+        for (int i = 0; i < 24; ++i) {
             QImage image(400, 240, QImage::Format_RGB32);
             image.fill(QColor::fromHsv((i * 37) % 360, 120, 160));
             QPainter painter(&image);
@@ -79,20 +73,17 @@ private Q_SLOTS:
             painter.setFont(font);
             painter.drawText(image.rect(), Qt::AlignCenter, QString::number(i + 1));
             painter.end();
-            QVERIFY(image.save(
-                directory.filePath(QString("Sample %1.png").arg(i + 1, 2, 10, QChar('0')))));
+            QVERIFY(image.save(directory.filePath(QString("Sample %1.png").arg(i + 1, 2, 10, QChar('0')))));
         }
-        auto pipeline = QSharedPointer<cache::ImagePipeline>::create(
-            QSharedPointer<cache::RenderedMemoryCache>::create(16 * 1024 * 1024),
-            QSharedPointer<cache::CachedSourceLoader>::create(nullptr), cache::ImageRenderer{});
+        auto pipeline = QSharedPointer<cache::ImagePipeline>::create(QSharedPointer<cache::RenderedMemoryCache>::create(16 * 1024 * 1024),
+                                                                     QSharedPointer<cache::CachedSourceLoader>::create(nullptr), cache::ImageRenderer{});
         gallery::GalleryWindow window(pipeline);
         window.show();
         window.openFolder(directory.path());
         auto* grid = window.findChild<gallery::ImageGrid*>();
         QVERIFY(grid);
         QTRY_COMPARE(grid->imageCount(), 24);
-        auto ready = [&window]
-        {
+        auto ready = [&window] {
             for (auto* box : window.findChildren<gui::ImageBox*>())
                 if (box->state() != gui::ImageBoxState::Ready)
                     return false;
@@ -100,8 +91,7 @@ private Q_SLOTS:
         };
         QTRY_VERIFY(ready());
         const auto screenshot = qEnvironmentVariable("ASTER_GALLERY_SCREENSHOT");
-        if (!screenshot.isEmpty())
-        {
+        if (!screenshot.isEmpty()) {
             QTest::qWait(550);
             QVERIFY(window.grab().save(screenshot));
         }
@@ -109,8 +99,7 @@ private Q_SLOTS:
         QCOMPARE(grid->imageCount(), 24);
     }
 
-    void folderScanAndWebsiteStub()
-    {
+    void folderScanAndWebsiteStub() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());
         QVERIFY(QDir(directory.path()).mkdir("nested"));
@@ -142,18 +131,16 @@ private Q_SLOTS:
         QCOMPARE(failed.count(), 2);
     }
 
-    void sixColumnGridAndRecycling()
-    {
+    void sixColumnGridAndRecycling() {
         QTemporaryDir directory;
         QImage image(100, 60, QImage::Format_RGB32);
         image.fill(Qt::red);
         const auto path = directory.filePath("image.png");
         QVERIFY(image.save(path));
         auto active = QSharedPointer<cache::ActiveResourceStore>::create(4 * 1024 * 1024);
-        auto pipeline = QSharedPointer<cache::ImagePipeline>::create(
-            QSharedPointer<cache::RenderedMemoryCache>::create(4 * 1024 * 1024),
-            QSharedPointer<cache::CachedSourceLoader>::create(nullptr), cache::ImageRenderer{}, 4,
-            cache::EventSink{}, cache::PipelineResources{nullptr, active});
+        auto pipeline = QSharedPointer<cache::ImagePipeline>::create(QSharedPointer<cache::RenderedMemoryCache>::create(4 * 1024 * 1024),
+                                                                     QSharedPointer<cache::CachedSourceLoader>::create(nullptr), cache::ImageRenderer{}, 4,
+                                                                     cache::EventSink{}, cache::PipelineResources{nullptr, active});
         gallery::ImageGrid grid(pipeline);
         grid.resize(1000, 600);
         grid.show();
@@ -165,8 +152,7 @@ private Q_SLOTS:
         QVERIFY(grid.visibleItemCount() >= 6);
         QVERIFY(grid.visibleItemCount() < 40);
         auto boxes = grid.findChildren<gui::ImageBox*>();
-        auto allReady = [&grid]
-        {
+        auto allReady = [&grid] {
             for (auto* box : grid.findChildren<gui::ImageBox*>())
                 if (box->state() != gui::ImageBoxState::Ready)
                     return false;

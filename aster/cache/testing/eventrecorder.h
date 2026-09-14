@@ -6,12 +6,9 @@
 
 #include <vector>
 
-namespace aster::cache::testing
-{
-class EventRecorder
-{
-    struct State
-    {
+namespace aster::cache::testing {
+class EventRecorder {
+    struct State {
         std::mutex mutex;
         std::vector<PipelineEvent> events;
     };
@@ -19,19 +16,16 @@ class EventRecorder
     QSharedPointer<State> state_ = QSharedPointer<State>::create();
 
 public:
-    EventSink sink() const
-    {
-        return [state = state_](const PipelineEvent& event)
-        {
+    EventSink sink() const {
+        return [state = state_](const PipelineEvent& event) {
             std::lock_guard<std::mutex> lock(state->mutex);
             state->events.push_back(event);
         };
     }
 
-    std::vector<PipelineEvent> events() const
-    {
+    std::vector<PipelineEvent> events() const {
         std::lock_guard<std::mutex> lock(state_->mutex);
         return state_->events;
     }
 };
-}
+} // namespace aster::cache::testing

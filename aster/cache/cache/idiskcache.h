@@ -7,16 +7,13 @@
 
 #include <atomic>
 
-namespace aster::cache
-{
-struct DiskEntry
-{
+namespace aster::cache {
+struct DiskEntry {
     QByteArray bytes;
     QJsonObject metadata;
 };
 
-struct DiskStats
-{
+struct DiskStats {
     quint64 hits = 0;
     quint64 misses = 0;
     quint64 corruptions = 0;
@@ -29,8 +26,7 @@ struct DiskStats
     LookupLatency lookup;
 };
 
-class IDiskCache
-{
+class IDiskCache {
 public:
     virtual ~IDiskCache() = default;
     virtual Result<DiskEntry> get(const QByteArray& digest) = 0;
@@ -41,9 +37,8 @@ public:
     virtual bool trim(qint64 bytes, const std::atomic<bool>* cancelled = nullptr) = 0;
     virtual DiskStats stats() const = 0;
 
-    virtual bool invalidate(const CacheSelector&, const std::atomic<bool>* = nullptr)
-    {
+    virtual bool invalidate(const CacheSelector&, const std::atomic<bool>* = nullptr) {
         return false;
     }
 };
-}
+} // namespace aster::cache

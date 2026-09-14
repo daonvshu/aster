@@ -3,12 +3,11 @@
 #include "aster/gui/imagebox.h"
 
 #include <QObject>
+#include <QPointer>
 #include <QVariantAnimation>
 
-namespace aster::gui::detail
-{
-class ImageBoxPresentation : public QObject
-{
+namespace aster::gui::detail {
+class ImageBoxPresentation : public QObject {
     Q_OBJECT
 
 public:
@@ -20,8 +19,8 @@ public:
     void paint(QPainter& painter, qreal dpr, ImageFit fit, bool error);
     void finishTransition();
     void syncState(ImageBoxState state);
-    void prepareConfigChange();
-    void syncConfig();
+    void clearLoadingErrorWidget();
+    void syncConfig(bool transitionChanged, bool widgetFactoryChanged);
     bool isLoadingIndicatorActive() const;
     bool isTransitionRunning() const;
     qreal transitionProgress() const;
@@ -29,6 +28,7 @@ public:
 private:
     QWidget& owner_;
     const ImageBoxConfig& config_;
+    QPointer<QWidget> loadingErrorWidget_;
     bool loading_ = false;
     ImageBoxState state_ = ImageBoxState::Empty;
     QImage currentImage_;
@@ -46,4 +46,4 @@ private:
     QSize previousTarget_;
     ImageFit previousFit_ = ImageFit::Contain;
 };
-}
+} // namespace aster::gui::detail

@@ -14,8 +14,7 @@
 
 #include <exception>
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
     QApplication app(argc, argv);
     QCoreApplication::setApplicationName("aster_gallery");
     QCoreApplication::setOrganizationName("aster");
@@ -24,8 +23,7 @@ int main(int argc, char** argv)
     parser.addHelpOption();
     parser.addPositionalArgument("folder", "Image folder to open", "[folder]");
     parser.process(app);
-    try
-    {
+    try {
         aster::cache::DecodeLimits limits;
         limits.allowedFormats = QImageReader::supportedImageFormats();
         aster::cache::ImageServiceConfig config;
@@ -36,8 +34,7 @@ int main(int argc, char** argv)
 #ifdef ASTER_GALLERY_NETWORK
         config.network = QSharedPointer<aster::cache::QtNetworkService>::create(10000);
         config.sourceDisk = QSharedPointer<aster::cache::FileDiskCache>::create(
-            QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/http-source",
-            256 * 1024 * 1024, 32 * 1024 * 1024);
+                QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/http-source", 256 * 1024 * 1024, 32 * 1024 * 1024);
 #endif
         aster::cache::ImageService::configure(config);
         int result;
@@ -50,9 +47,7 @@ int main(int argc, char** argv)
         }
         aster::cache::ImageService::shutdown();
         return result;
-    }
-    catch (const std::exception& error)
-    {
+    } catch (const std::exception& error) {
         QMessageBox::critical(nullptr, "aster", QString::fromUtf8(error.what()));
         return 1;
     }

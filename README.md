@@ -116,6 +116,14 @@ box->setConfig(config);
 
 Default values are documented in `imageboxconfig.h`: Contain, QtSmooth, 75 ms resize debounce, bucket 1, no placeholder/error replacement, no transition, 200 ms transition duration, zero corner radius, and Keep offscreen policy. Reuse one configuration value across ImageBox instances and update it through the fluent methods when shared display settings change.
 
+Widget-based loading and error content uses a factory so a shared configuration creates an independently owned widget for every ImageBox:
+
+```cpp
+config.loadingErrorWidget([](QWidget* parent) {
+    return new CustomStatusWidget(parent);
+});
+```
+
 ## Examples
 
 - `aster_gallery` demonstrates folder browsing, HTTP endpoints, caching, and ImageBox.
