@@ -6,6 +6,7 @@
 
 #include <QBuffer>
 #include <QFile>
+#include <QLabel>
 #include <QSharedPointer>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -158,7 +159,7 @@ private Q_SLOTS:
         box.setAutoFillBackground(true);
         QImage placeholder(40, 40, QImage::Format_RGB32);
         placeholder.fill(Qt::yellow);
-        box.setPlaceholder(placeholder);
+        box.setConfig(ImageBoxConfig().placeholder(placeholder).build());
         box.show();
         const auto render = [&]
         {
@@ -168,36 +169,35 @@ private Q_SLOTS:
             return canvas;
         };
 
-        QCOMPARE(box.cornerRadius(), qreal(0));
+        QCOMPARE(box.config().cornerRadius(), qreal(0));
         QCOMPARE(render().pixelColor(0, 0), QColor(Qt::yellow));
-        QSignalSpy changed(&box, &ImageBox::cornerRadiusChanged);
-        QVERIFY(box.setProperty("cornerRadius", 12.0));
-        QCOMPARE(box.cornerRadius(), qreal(12));
-        box.setCornerRadius(12);
-        QCOMPARE(changed.count(), 1);
+        box.setConfig(box.config().cornerRadius(12).build());
+        QCOMPARE(box.config().cornerRadius(), qreal(12));
         QCOMPARE(render().pixelColor(0, 0), QColor(Qt::black));
         QCOMPARE(render().pixelColor(20, 20), QColor(Qt::yellow));
-        QVERIFY_EXCEPTION_THROWN(box.setCornerRadius(-1), std::invalid_argument);
-        QVERIFY_EXCEPTION_THROWN(box.setCornerRadius(std::numeric_limits<qreal>::infinity()),
-                                 std::invalid_argument);
-        QVERIFY_EXCEPTION_THROWN(box.setCornerRadius(std::numeric_limits<qreal>::quiet_NaN()),
-                                 std::invalid_argument);
-        QCOMPARE(box.cornerRadius(), qreal(12));
+        QVERIFY_EXCEPTION_THROWN(ImageBoxConfig().cornerRadius(-1), std::invalid_argument);
+        QVERIFY_EXCEPTION_THROWN(
+            ImageBoxConfig().cornerRadius(std::numeric_limits<qreal>::infinity()),
+            std::invalid_argument);
+        QVERIFY_EXCEPTION_THROWN(
+            ImageBoxConfig().cornerRadius(std::numeric_limits<qreal>::quiet_NaN()),
+            std::invalid_argument);
+        QCOMPARE(box.config().cornerRadius(), qreal(12));
 
         box.setSource("https://example.test/a");
         QTRY_COMPARE(box.state(), ImageBoxState::Ready);
         QCOMPARE(render().pixelColor(0, 0), QColor(Qt::black));
         QCOMPARE(render().pixelColor(20, 20), QColor(Qt::red));
         QSignalSpy loading(&box, &ImageBox::loadingStarted);
-        box.setCornerRadius(0);
+        box.setConfig(box.config().cornerRadius(0).build());
         QCOMPARE(render().pixelColor(0, 0), QColor(Qt::red));
-        box.setCornerRadius(1000);
+        box.setConfig(box.config().cornerRadius(1000).build());
         QCOMPARE(render().pixelColor(0, 0), QColor(Qt::black));
         QCOMPARE(render().pixelColor(20, 20), QColor(Qt::red));
         QCOMPARE(loading.count(), 0);
 
-        box.setTransition(ImageTransition::CrossFade);
-        box.setTransitionDuration(1000);
+        box.setConfig(
+            box.config().transition(ImageTransition::CrossFade).transitionDuration(1000).build());
         box.setSource("https://example.test/b");
         QTRY_COMPARE(box.state(), ImageBoxState::Ready);
         QTRY_VERIFY(box.transitionProgress() >= 0.3);
@@ -206,19 +206,61 @@ private Q_SLOTS:
         QCOMPARE(blended.pixelColor(0, 0), QColor(Qt::black));
         QVERIFY(blended.pixelColor(20, 20).red() > 0);
         QVERIFY(blended.pixelColor(20, 20).blue() > 0);
-        box.setTransition(ImageTransition::None);
+        box.setConfig(box.config().transition(ImageTransition::None).build());
         box.setContentsMargins(4, 4, 4, 4);
         QCOMPARE(render().pixelColor(4, 4), QColor(Qt::black));
         QCOMPARE(render().pixelColor(20, 20), QColor(Qt::blue));
 
         placeholder.fill(Qt::green);
-        box.setErrorImage(placeholder);
-        box.setErrorReplacesImage(true);
+        box.setConfig(box.config().errorImage(placeholder).errorReplacesImage().build());
         box.setPipeline(normalPipeline());
         box.setSource(":/missing-rounded.png");
         QTRY_COMPARE(box.state(), ImageBoxState::Error);
         QCOMPARE(render().pixelColor(4, 4), QColor(Qt::black));
         QCOMPARE(render().pixelColor(20, 20), QColor(Qt::green));
+    }
+
+    void loadingErrorReplacements()
+    {
+        ControlledPipeline fixture;
+        ImageBox box;
+        box.resize(32, 32);
+        box.setPipeline(fixture.pipeline);
+        box.show();
+        auto* replacement = new QLabel("custom status", &box);
+        replacement->setStyleSheet("background: rgb(12, 34, 56); color: white;");
+        box.setConfig(box.config().loadingErrorWidget(replacement).build());
+        box.setSource("https://example.test/a");
+        QTRY_COMPARE(box.state(), ImageBoxState::Loading);
+        QVERIFY(replacement->isVisible());
+        fixture.loader->release("/a");
+        QTRY_COMPARE(box.state(), ImageBoxState::Ready);
+        QVERIFY(!replacement->isVisible());
+
+        box.setPipeline(normalPipeline());
+        box.setSource(":/missing-status.png");
+        QTRY_COMPARE(box.state(), ImageBoxState::Error);
+        QVERIFY(replacement->isVisible());
+        box.setConfig(box.config().loadingErrorWidget(nullptr).build());
+        QVERIFY(!replacement->isVisible());
+
+        QImage status(32, 32, QImage::Format_RGB32);
+        status.fill(Qt::magenta);
+        box.setConfig(box.config().loadingErrorImage(status).build());
+        box.setPipeline(fixture.pipeline);
+        box.setSource("https://example.test/a");
+        QTRY_COMPARE(box.state(), ImageBoxState::Loading);
+        QImage canvas(32, 32, QImage::Format_RGB32);
+        canvas.fill(Qt::black);
+        box.render(&canvas);
+        QCOMPARE(canvas.pixelColor(16, 16), QColor(Qt::magenta));
+        fixture.loader->release("/a");
+        QTRY_COMPARE(box.state(), ImageBoxState::Ready);
+        QVERIFY(box.config().loadingErrorImage() == status);
+        box.setConfig(box.config().loadingErrorImage({}).loadingErrorWidget(replacement).build());
+        box.setSource(":/missing-status-2.png");
+        QTRY_COMPARE(box.state(), ImageBoxState::Error);
+        QVERIFY(replacement->isVisible());
     }
 
     void offscreenPolicies()
@@ -231,8 +273,13 @@ private Q_SLOTS:
             ImageBox box;
             box.resize(8, 8);
             box.setPipeline(fixture.pipeline);
-            box.setOffscreenPolicy(policy);
-            QCOMPARE(box.offscreenPolicy(), policy);
+            box.setConfig(ImageBoxConfig().offscreenPolicy(policy).build());
+            QCOMPARE(box.config().offscreenPolicy(), policy);
+            if (policy == OffscreenPolicy::Keep)
+            {
+                box.show();
+                box.hide();
+            }
             box.setSource("https://example.test/a");
             QCOMPARE(box.state(), ImageBoxState::Empty);
             QCOMPARE(fixture.loader->started("/a"), 0);
@@ -259,7 +306,7 @@ private Q_SLOTS:
             flushDeletes();
             QCOMPARE(fixture.active->stats().entries, qint64(1));
             box.hide();
-            box.setOffscreenPolicy(OffscreenPolicy::ReleaseImage);
+            box.setConfig(box.config().offscreenPolicy(OffscreenPolicy::ReleaseImage).build());
             QVERIFY(box.image().isNull());
             QCOMPARE(fixture.active->stats().entries, qint64(0));
             box.setSource("");
@@ -275,7 +322,7 @@ private Q_SLOTS:
         ImageBox box(&parent);
         box.resize(8, 8);
         box.setPipeline(fixture.pipeline);
-        box.setLoadingIndicatorEnabled(true);
+        box.setConfig(ImageBoxConfig().loadingIndicator().build());
         parent.show();
         box.setSource("https://example.test/a");
         QTRY_COMPARE(fixture.loader->started("/a"), 1);
@@ -298,7 +345,7 @@ private Q_SLOTS:
         fixture.loader->release("/b");
         QTRY_COMPARE(box.state(), ImageBoxState::Ready);
         QCOMPARE(box.image().pixelColor(0, 0), QColor(Qt::blue));
-        box.setResizeDebounceInterval(500);
+        box.setConfig(box.config().resizeDebounce(500).build());
         box.resize(20, 20);
         QCOMPARE(box.state(), ImageBoxState::Loading);
         box.hide();
@@ -330,7 +377,7 @@ private Q_SLOTS:
         ImageBox box;
         box.resize(8, 8);
         box.setPipeline(fixture.pipeline);
-        box.setOffscreenPolicy(OffscreenPolicy::ReleaseImage);
+        box.setConfig(ImageBoxConfig().offscreenPolicy(OffscreenPolicy::ReleaseImage).build());
         QSignalSpy loaded(&box, &ImageBox::loaded);
         for (int i = 0; i < 100; ++i)
         {
@@ -370,7 +417,7 @@ private Q_SLOTS:
         {
             auto* box = new ImageBox(&parent);
             box->resize(8, 8);
-            box->setOffscreenPolicy(OffscreenPolicy::ReleaseImage);
+            box->setConfig(ImageBoxConfig().offscreenPolicy(OffscreenPolicy::ReleaseImage).build());
             box->hide();
             box->setPipeline(pipeline);
             box->setSource(QString("https://example.test/image-%1").arg(i));
@@ -434,8 +481,7 @@ private Q_SLOTS:
         placeholder.fill(Qt::yellow);
         QImage error(8, 8, QImage::Format_RGB32);
         error.fill(Qt::green);
-        box.setPlaceholder(placeholder);
-        box.setErrorImage(error);
+        box.setConfig(ImageBoxConfig().placeholder(placeholder).errorImage(error).build());
         box.show();
         auto pixel = [&]
         {
@@ -445,7 +491,7 @@ private Q_SLOTS:
             return canvas.pixelColor(0, 0);
         };
         QCOMPARE(pixel(), QColor(Qt::yellow));
-        box.setLoadingIndicatorEnabled(true);
+        box.setConfig(box.config().loadingIndicator().build());
         box.setSource("https://example.test/a");
         QVERIFY(box.isLoadingIndicatorActive());
         box.hide();
@@ -460,11 +506,11 @@ private Q_SLOTS:
         flushDeletes();
         QCOMPARE(fixture.active->stats().entries, qint64(1));
 
-        box.setTransition(ImageTransition::CrossFade);
-        box.setTransitionDuration(1000);
+        box.setConfig(
+            box.config().transition(ImageTransition::CrossFade).transitionDuration(1000).build());
         box.setSource("https://example.test/b");
         QVERIFY(!box.isLoadingIndicatorActive());
-        box.setLoadingOverlayEnabled(true);
+        box.setConfig(box.config().loadingOverlay().build());
         QVERIFY(box.isLoadingIndicatorActive());
         fixture.loader->release("/b");
         QTRY_COMPARE(box.state(), ImageBoxState::Ready);
@@ -487,8 +533,7 @@ private Q_SLOTS:
              {ImageTransition::Fade, ImageTransition::CrossFade, ImageTransition::Slide,
               ImageTransition::Zoom, ImageTransition::FadeZoom})
         {
-            box.setTransition(transition);
-            box.setTransitionDuration(500);
+            box.setConfig(box.config().transition(transition).transitionDuration(500).build());
             box.setSource(box.source().endsWith("/a") ? "https://example.test/b"
                                                       : "https://example.test/a");
             QTRY_COMPARE(box.state(), ImageBoxState::Ready);
@@ -502,7 +547,7 @@ private Q_SLOTS:
             QCOMPARE(fixture.active->stats().entries, qint64(1));
             box.show();
         }
-        box.setTransitionDuration(0);
+        box.setConfig(box.config().transitionDuration(0).build());
         box.reload();
         QTRY_COMPARE(box.state(), ImageBoxState::Ready);
         QVERIFY(!box.isTransitionRunning());
@@ -511,7 +556,7 @@ private Q_SLOTS:
         QTRY_COMPARE(box.state(), ImageBoxState::Error);
         QVERIFY(!box.isTransitionRunning());
         QCOMPARE(pixel(), box.image().pixelColor(0, 0));
-        box.setErrorReplacesImage(true);
+        box.setConfig(box.config().errorReplacesImage().build());
         QCOMPARE(pixel(), QColor(Qt::green));
         box.setSource("");
         QCOMPARE(pixel(), QColor(Qt::yellow));
@@ -524,8 +569,10 @@ private Q_SLOTS:
         auto* transient = new ImageBox;
         transient->resize(8, 8);
         transient->setPipeline(fixture.pipeline);
-        transient->setTransition(ImageTransition::CrossFade);
-        transient->setTransitionDuration(1000);
+        transient->setConfig(ImageBoxConfig()
+                                 .transition(ImageTransition::CrossFade)
+                                 .transitionDuration(1000)
+                                 .build());
         transient->show();
         transient->setSource("https://example.test/a");
         QTRY_COMPARE(transient->state(), ImageBoxState::Ready);
@@ -540,6 +587,27 @@ private Q_SLOTS:
 
     void dimensionsAlgorithmsAndResize()
     {
+        ImageBox configBox;
+        configBox.resize(32, 32);
+        configBox.setConfig(ImageBoxConfig()
+                                .fit(ImageFit::Cover)
+                                .scaleAlgorithm(ImageScaleAlgorithm::Lanczos3)
+                                .resizeDebounce(120)
+                                .sizeBucket(8)
+                                .cornerRadius(6)
+                                .transition(ImageTransition::Fade)
+                                .transitionDuration(300)
+                                .offscreenPolicy(OffscreenPolicy::ReleaseImage)
+                                .build());
+        QCOMPARE(configBox.config().fit(), ImageFit::Cover);
+        QCOMPARE(configBox.config().scaleAlgorithm(), ImageScaleAlgorithm::Lanczos3);
+        QCOMPARE(configBox.config().resizeDebounce(), 120);
+        QCOMPARE(configBox.config().sizeBucket(), 8);
+        QCOMPARE(configBox.config().cornerRadius(), qreal(6));
+        QCOMPARE(configBox.config().transition(), ImageTransition::Fade);
+        QCOMPARE(configBox.config().transitionDuration(), 300);
+        QCOMPARE(configBox.config().offscreenPolicy(), OffscreenPolicy::ReleaseImage);
+
         class DprBox : public ImageBox
         {
         public:
@@ -571,11 +639,11 @@ private Q_SLOTS:
             });
         DprBox box;
         box.setPipeline(pipeline);
-        box.setFit(ImageFit::Fill);
+        box.setConfig(ImageBoxConfig().fit(ImageFit::Fill).build());
         box.resize(101, 51);
         QSignalSpy loaded(&box, &ImageBox::loaded);
         QSignalSpy started(&box, &ImageBox::loadingStarted);
-        QCOMPARE(box.scaleAlgorithm(), ImageScaleAlgorithm::QtSmooth);
+        QCOMPARE(box.config().scaleAlgorithm(), ImageScaleAlgorithm::QtSmooth);
         box.setSource("https://example.test/a");
         QTRY_COMPARE(loaded.count(), 1);
         QCOMPARE(box.image().size(), QSize(101, 51));
@@ -594,24 +662,24 @@ private Q_SLOTS:
             QCOMPARE(box.image().size(), *physicalTargetSize(QSizeF(101, 51), ratio).value);
             QCOMPARE(box.image().devicePixelRatio(), ratio);
         }
-        box.setScaleAlgorithm(ImageScaleAlgorithm::Lanczos4);
+        box.setConfig(box.config().scaleAlgorithm(ImageScaleAlgorithm::Lanczos4).build());
         QTRY_COMPARE(box.state(), ImageBoxState::Ready);
         {
             std::lock_guard<std::mutex> lock(mutex);
             QCOMPARE(recorded.back().scaleAlgorithm, ImageScaleAlgorithm::Lanczos4);
         }
-        box.setScaleAlgorithm(ImageScaleAlgorithm::Bicubic);
+        box.setConfig(box.config().scaleAlgorithm(ImageScaleAlgorithm::Bicubic).build());
         QTRY_COMPARE(box.state(), ImageBoxState::Ready);
         {
             std::lock_guard<std::mutex> lock(mutex);
             QCOMPARE(recorded.back().scaleAlgorithm, ImageScaleAlgorithm::Bicubic);
         }
         box.ratio = 1;
-        box.setScaleAlgorithm(ImageScaleAlgorithm::QtSmooth);
+        box.setConfig(box.config().scaleAlgorithm(ImageScaleAlgorithm::QtSmooth).build());
         QTRY_COMPARE(box.state(), ImageBoxState::Ready);
         box.show();
         QCoreApplication::processEvents();
-        box.setResizeDebounceInterval(150);
+        box.setConfig(box.config().resizeDebounce(150).build());
         const auto count = started.count();
         for (int i = 0; i < 1000; ++i)
             box.resize(100 + i % 99, 60 + i % 47);
@@ -620,7 +688,7 @@ private Q_SLOTS:
         QTRY_COMPARE(box.state(), ImageBoxState::Ready);
         QCOMPARE(started.count(), count + 1);
         QCOMPARE(box.image().size(), QSize(301, 201));
-        box.setTargetSizeBucket(16);
+        box.setConfig(box.config().sizeBucket(16).build());
         QTRY_COMPARE(box.state(), ImageBoxState::Ready);
         QCOMPARE(box.image().size(), QSize(304, 208));
         const auto bucketCount = started.count();

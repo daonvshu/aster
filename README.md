@@ -84,10 +84,13 @@ QObject::connect(subscription, &aster::cache::ImageSubscription::finished,
 
 auto* box = new aster::gui::ImageBox(parent);
 box->setPipeline(aster::cache::ImageService::pipeline());
-box->setFit(aster::gui::ImageFit::Contain);
-box->setScaleAlgorithm(aster::gui::ImageScaleAlgorithm::Lanczos3);
-box->setCornerRadius(12);
-box->setPlaceholder(placeholder);
+const auto imageBoxConfig = aster::gui::ImageBoxConfig()
+                                .fit(aster::gui::ImageFit::Contain)
+                                .scaleAlgorithm(aster::gui::ImageScaleAlgorithm::Lanczos3)
+                                .cornerRadius(12)
+                                .placeholder(placeholder)
+                                .build();
+box->setConfig(imageBoxConfig);
 box->setSource("C:/images/photo.jpg");
 
 QObject::connect(box, &aster::gui::ImageBox::loadFailed, parent,
@@ -97,6 +100,21 @@ QObject::connect(box, &aster::gui::ImageBox::loadFailed, parent,
 ```
 
 ImageBox handles request generations, cancellation, late results, state changes, and painting. String sources support local paths, `file:`, `qrc:`, and HTTP(S) URLs.
+
+Display settings can be applied through the fluent configuration object:
+
+```cpp
+auto config = aster::gui::ImageBoxConfig()
+                  .fit(aster::gui::ImageFit::Contain)
+                  .scaleAlgorithm(aster::gui::ImageScaleAlgorithm::Lanczos3)
+                  .cornerRadius(12)
+                  .transition(aster::gui::ImageTransition::Fade)
+                  .transitionDuration(200)
+                  .build();
+box->setConfig(config);
+```
+
+Default values are documented in `imageboxconfig.h`: Contain, QtSmooth, 75 ms resize debounce, bucket 1, no placeholder/error replacement, no transition, 200 ms transition duration, zero corner radius, and Keep offscreen policy. Reuse one configuration value across ImageBox instances and update it through the fluent methods when shared display settings change.
 
 ## Examples
 

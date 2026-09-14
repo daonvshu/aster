@@ -35,6 +35,12 @@ QImage statusImage(const QString& text, const QColor& color)
 ImageGrid::ImageGrid(QSharedPointer<cache::ImagePipeline> pipeline, QWidget* parent)
     : QAbstractScrollArea(parent), pipeline_(std::move(pipeline))
 {
+    config_.offscreenPolicy(gui::OffscreenPolicy::ReleaseImage)
+        .transitionDuration(220)
+        .loadingIndicator()
+        .placeholder(statusImage(tr("加载中"), QColor("#222c3b")))
+        .errorImage(statusImage(tr("加载失败"), QColor("#3c2830")))
+        .errorReplacesImage();
     setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setFrameShape(QFrame::NoFrame);
@@ -71,23 +77,23 @@ int ImageGrid::visibleItemCount() const
 
 void ImageGrid::setAlgorithm(gui::ImageScaleAlgorithm algorithm)
 {
-    algorithm_ = algorithm;
+    config_.scaleAlgorithm(algorithm);
     for (const auto& card : cards_)
-        card.image->setScaleAlgorithm(algorithm);
+        card.image->setConfig(config_);
 }
 
 void ImageGrid::setFit(gui::ImageFit fit)
 {
-    fit_ = fit;
+    config_.fit(fit);
     for (const auto& card : cards_)
-        card.image->setFit(fit);
+        card.image->setConfig(config_);
 }
 
 void ImageGrid::setTransition(gui::ImageTransition transition)
 {
-    transition_ = transition;
+    config_.transition(transition);
     for (const auto& card : cards_)
-        card.image->setTransition(transition);
+        card.image->setConfig(config_);
 }
 
 void ImageGrid::refresh()
@@ -160,16 +166,8 @@ void ImageGrid::updateItems()
             layout->setContentsMargins(0, 0, 0, 0);
             layout->setSpacing(4);
             auto* box = new gui::ImageBox(widget);
-            box->setOffscreenPolicy(gui::OffscreenPolicy::ReleaseImage);
             box->setPipeline(pipeline_);
-            box->setFit(fit_);
-            box->setScaleAlgorithm(algorithm_);
-            box->setTransition(transition_);
-            box->setTransitionDuration(220);
-            box->setLoadingIndicatorEnabled(true);
-            box->setPlaceholder(statusImage(tr("加载中"), QColor("#222c3b")));
-            box->setErrorImage(statusImage(tr("加载失败"), QColor("#3c2830")));
-            box->setErrorReplacesImage(true);
+            box->setConfig(config_);
             const QUrl sourceUrl(files_[index]);
             const auto name = sourceUrl.scheme().startsWith("http")
                                   ? sourceUrl.path()

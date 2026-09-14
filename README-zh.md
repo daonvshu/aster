@@ -84,10 +84,13 @@ QObject::connect(subscription, &aster::cache::ImageSubscription::finished,
 
 auto* box = new aster::gui::ImageBox(parent);
 box->setPipeline(aster::cache::ImageService::pipeline());
-box->setFit(aster::gui::ImageFit::Contain);
-box->setScaleAlgorithm(aster::gui::ImageScaleAlgorithm::Lanczos3);
-box->setCornerRadius(12);
-box->setPlaceholder(placeholder);
+const auto imageBoxConfig = aster::gui::ImageBoxConfig()
+                                .fit(aster::gui::ImageFit::Contain)
+                                .scaleAlgorithm(aster::gui::ImageScaleAlgorithm::Lanczos3)
+                                .cornerRadius(12)
+                                .placeholder(placeholder)
+                                .build();
+box->setConfig(imageBoxConfig);
 box->setSource("C:/images/photo.jpg");
 
 QObject::connect(box, &aster::gui::ImageBox::loadFailed, parent,
@@ -97,6 +100,21 @@ QObject::connect(box, &aster::gui::ImageBox::loadFailed, parent,
 ```
 
 ImageBox 自动处理请求 generation、取消、迟到结果、状态变化和绘制。字符串来源支持本地路径、`file:`、`qrc:` 和 HTTP(S) URL。
+
+ImageBox 的显示参数可以集中使用 fluent 配置：
+
+```cpp
+auto config = aster::gui::ImageBoxConfig()
+                  .fit(aster::gui::ImageFit::Contain)
+                  .scaleAlgorithm(aster::gui::ImageScaleAlgorithm::Lanczos3)
+                  .cornerRadius(12)
+                  .transition(aster::gui::ImageTransition::Fade)
+                  .transitionDuration(200)
+                  .build();
+box->setConfig(config);
+```
+
+配置类方法的默认值写在 `imageboxconfig.h`：Contain、QtSmooth、75 ms 防抖、bucket 1、无占位/错误替换、无动画、200 ms 动画时长、0 圆角和 Keep 离屏策略。多个 ImageBox 可以复用同一个配置值；公共显示参数变化时，通过 fluent 方法更新配置并统一下发即可。
 
 ## 示例程序
 

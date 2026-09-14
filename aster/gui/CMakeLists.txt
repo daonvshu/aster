@@ -2,8 +2,10 @@ find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
 
 add_library(aster_gui STATIC
     imagebox.cpp
+    imageboxconfig.cpp
     imageboxvisibility.cpp
     imagebox.h
+    imageboxconfig.h
     gui.h
     private/imageboxpresentation.cpp
     private/imageboxpresentation.h

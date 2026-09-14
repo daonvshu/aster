@@ -10,18 +10,16 @@
 #include <QTimer>
 
 #include <algorithm>
-#include <cmath>
-#include <stdexcept>
 
 namespace aster::gui
 {
 ImageBox::ImageBox(QWidget* parent)
-    : QWidget(parent), presentation_(new detail::ImageBoxPresentation(*this))
+    : QWidget(parent), presentation_(new detail::ImageBoxPresentation(*this, config_))
 {
     qRegisterMetaType<ImageBoxState>("aster::gui::ImageBoxState");
     qRegisterMetaType<cache::ImageError>("aster::cache::ImageError");
     resizeTimer_.setSingleShot(true);
-    resizeTimer_.setInterval(75);
+    resizeTimer_.setInterval(config_.resizeDebounce_);
     connect(&resizeTimer_, &QTimer::timeout, this, &ImageBox::startRequest);
 }
 
@@ -44,6 +42,35 @@ void ImageBox::setPipeline(QSharedPointer<cache::ImagePipeline> pipeline)
 QSharedPointer<cache::ImagePipeline> ImageBox::pipeline() const
 {
     return pipeline_;
+}
+
+void ImageBox::setConfig(const ImageBoxConfig& config)
+{
+    Q_ASSERT(QThread::currentThread() == thread());
+    const bool requestChanged = config_.fit_ != config.fit_ ||
+                                config_.scaleAlgorithm_ != config.scaleAlgorithm_ ||
+                                config_.sizeBucket_ != config.sizeBucket_;
+    const bool offscreenPolicyChanged = config_.offscreenPolicy_ != config.offscreenPolicy_;
+    presentation_->prepareConfigChange();
+    config_ = config;
+    resizeTimer_.setInterval(config.resizeDebounce_);
+    presentation_->syncConfig();
+    if (suspended_ || (offscreenPolicyChanged && !isVisible()))
+    {
+        suspendForHide();
+        return;
+    }
+    if (source_.isEmpty())
+        setState(ImageBoxState::Empty);
+    else if (requestChanged)
+        startRequest();
+    presentation_->syncState(state_);
+    update();
+}
+
+ImageBoxConfig ImageBox::config() const
+{
+    return config_;
 }
 
 QString ImageBox::source() const
@@ -143,7 +170,7 @@ void ImageBox::startRequest()
     }
 
     const auto dpr = requestDevicePixelRatio();
-    const auto target = cache::physicalTargetSize(contentsRect().size(), dpr, targetSizeBucket_);
+    const auto target = cache::physicalTargetSize(contentsRect().size(), dpr, config_.sizeBucket_);
     if (!target)
     {
         requestedTarget_ = {};
@@ -166,21 +193,18 @@ void ImageBox::startRequest()
     const auto pipeline = pipeline_;
     if (!pipeline)
     {
-        QTimer::singleShot(0, this,
-                           [this, generation]
-                           {
-                               applyResult(generation, cache::ImageResult::failure(
-                                                           cache::ImageError::InvalidRequest,
-                                                           "ImagePipeline is not configured"));
-                           });
+        QTimer::singleShot(0, this, [this, generation] {
+            applyResult(generation, cache::ImageResult::failure(cache::ImageError::InvalidRequest,
+                "ImagePipeline is not configured"));
+        });
         return;
     }
 
     cache::RenderOptions options;
     options.physicalTargetSize = *target.value;
     options.dpr = dpr;
-    options.fitMode = cache::fitName(fit_);
-    options.scaleAlgorithm = scaleAlgorithm_;
+    options.fitMode = cache::fitName(config_.fit_);
+    options.scaleAlgorithm = config_.scaleAlgorithm_;
     auto* subscription = pipeline->request(source_, options, this);
     if (!guard)
         return;
@@ -192,8 +216,7 @@ void ImageBox::startRequest()
 
     subscription_ = subscription;
     connect(subscription, &cache::ImageSubscription::finished, this,
-            [this, generation](cache::ImageResult result)
-            {
+        [this, generation](cache::ImageResult result) {
                 applyResult(generation, std::move(result));
             });
 }
@@ -210,7 +233,8 @@ void ImageBox::applyResult(quint64 generation, cache::ImageResult result)
     QPointer<ImageBox> guard(this);
     if (result)
     {
-        presentation_->accept(std::move(result), requestedTarget_, fit_, requestDevicePixelRatio());
+        presentation_->accept(std::move(result), requestedTarget_, config_.fit_,
+                              requestDevicePixelRatio());
         error_ = cache::ImageError::None;
         errorString_.clear();
         update();
@@ -239,17 +263,15 @@ void ImageBox::setState(ImageBoxState state, bool queuedNotification)
         return;
 
     state_ = state;
-    presentation_->syncLoadingIndicator(state_ == ImageBoxState::Loading);
+    presentation_->syncState(state);
     update();
     if (queuedNotification)
     {
         const auto generation = generation_;
-        QTimer::singleShot(0, this,
-                           [this, state, generation]
-                           {
-                               if (generation_ == generation && state_ == state)
-                                   Q_EMIT stateChanged(state);
-                           });
+        QTimer::singleShot(0, this, [this, state, generation] {
+            if (generation_ == generation && state_ == state)
+               Q_EMIT stateChanged(state);
+        });
         return;
     }
     Q_EMIT stateChanged(state);
@@ -258,99 +280,20 @@ void ImageBox::setState(ImageBoxState state, bool queuedNotification)
 void ImageBox::paintEvent(QPaintEvent*)
 {
     QPainter painter(this);
-    if (cornerRadius_ > 0)
+    if (config_.cornerRadius_ > 0)
     {
         const QRectF bounds(contentsRect());
         if (bounds.isEmpty())
             return;
 
-        const qreal radius = std::min(cornerRadius_, std::min(bounds.width(), bounds.height()) / 2);
+        const qreal radius =
+            std::min(config_.cornerRadius_, std::min(bounds.width(), bounds.height()) / 2);
         QPainterPath clip;
         clip.addRoundedRect(bounds, radius, radius);
         painter.setRenderHint(QPainter::Antialiasing);
         painter.setClipPath(clip, Qt::IntersectClip);
     }
-    presentation_->paint(painter, requestDevicePixelRatio(), fit_, state_ == ImageBoxState::Error);
-}
-
-qreal ImageBox::cornerRadius() const
-{
-    return cornerRadius_;
-}
-
-void ImageBox::setCornerRadius(qreal radius)
-{
-    Q_ASSERT(QThread::currentThread() == thread());
-    if (!std::isfinite(radius) || radius < 0)
-        throw std::invalid_argument("Invalid corner radius");
-    if (cornerRadius_ == radius)
-        return;
-
-    cornerRadius_ = radius;
-    update();
-    Q_EMIT cornerRadiusChanged(radius);
-}
-
-ImageFit ImageBox::fit() const
-{
-    return fit_;
-}
-
-void ImageBox::setFit(ImageFit fit)
-{
-    Q_ASSERT(QThread::currentThread() == thread());
-    if (cache::fitName(fit).isEmpty())
-        throw std::invalid_argument("Invalid image fit");
-    if (fit_ == fit)
-        return;
-    fit_ = fit;
-    update();
-    startRequest();
-}
-
-ImageScaleAlgorithm ImageBox::scaleAlgorithm() const
-{
-    return scaleAlgorithm_;
-}
-
-void ImageBox::setScaleAlgorithm(ImageScaleAlgorithm algorithm)
-{
-    Q_ASSERT(QThread::currentThread() == thread());
-    if (int(algorithm) < 0 || int(algorithm) > int(ImageScaleAlgorithm::Lanczos4))
-        throw std::invalid_argument("Invalid scale algorithm");
-    if (scaleAlgorithm_ == algorithm)
-        return;
-    scaleAlgorithm_ = algorithm;
-    startRequest();
-}
-
-int ImageBox::resizeDebounceInterval() const
-{
-    return resizeTimer_.interval();
-}
-
-void ImageBox::setResizeDebounceInterval(int milliseconds)
-{
-    Q_ASSERT(QThread::currentThread() == thread());
-    if (milliseconds < 0 || milliseconds > 60000)
-        throw std::invalid_argument("Invalid resize debounce interval");
-    resizeTimer_.setInterval(milliseconds);
-}
-
-int ImageBox::targetSizeBucket() const
-{
-    return targetSizeBucket_;
-}
-
-void ImageBox::setTargetSizeBucket(int pixels)
-{
-    Q_ASSERT(QThread::currentThread() == thread());
-    if (pixels < 1 || pixels > 4096)
-        throw std::invalid_argument("Invalid target size bucket");
-    if (pixels == targetSizeBucket_)
-        return;
-    targetSizeBucket_ = pixels;
-    scheduleSizeRequest();
+    presentation_->paint(painter, requestDevicePixelRatio(), config_.fit_, state_ == ImageBoxState::Error);
 }
 
 qreal ImageBox::requestDevicePixelRatio() const
@@ -368,7 +311,7 @@ void ImageBox::scheduleSizeRequest()
         return;
     }
     const auto dpr = requestDevicePixelRatio();
-    const auto target = cache::physicalTargetSize(contentsRect().size(), dpr, targetSizeBucket_);
+    const auto target = cache::physicalTargetSize(contentsRect().size(), dpr, config_.sizeBucket_);
     if (target && *target.value == requestedTarget_ && dpr == requestedDpr_ &&
         !resizeTimer_.isActive())
         return;
@@ -387,6 +330,7 @@ void ImageBox::scheduleSizeRequest()
 void ImageBox::resizeEvent(QResizeEvent* event)
 {
     QWidget::resizeEvent(event);
+    presentation_->syncState(state_);
     scheduleSizeRequest();
 }
 
@@ -406,12 +350,10 @@ bool ImageBox::event(QEvent* event)
     {
         suspended_ = false;
         const auto generation = generation_;
-        QTimer::singleShot(0, this,
-                           [this, generation]
-                           {
-                               if (generation_ == generation && isVisible())
-                                   resumeAfterShow();
-                           });
+        QTimer::singleShot(0, this, [this, generation] {
+            if (generation_ == generation && isVisible())
+               resumeAfterShow();
+        });
         return result;
     }
     if (type == QEvent::ScreenChangeInternal || type == QEvent::ContentsRectChange
@@ -423,79 +365,9 @@ bool ImageBox::event(QEvent* event)
     return result;
 }
 
-void ImageBox::setPlaceholder(const QImage& image)
-{
-    presentation_->setPlaceholder(image);
-}
-
-QImage ImageBox::placeholder() const
-{
-    return presentation_->placeholder();
-}
-
-void ImageBox::setErrorImage(const QImage& image)
-{
-    presentation_->setErrorImage(image);
-}
-
-QImage ImageBox::errorImage() const
-{
-    return presentation_->errorImage();
-}
-
-void ImageBox::setErrorReplacesImage(bool enabled)
-{
-    presentation_->setErrorReplacesImage(enabled);
-}
-
-bool ImageBox::errorReplacesImage() const
-{
-    return presentation_->errorReplacesImage();
-}
-
-void ImageBox::setLoadingIndicatorEnabled(bool enabled)
-{
-    presentation_->setLoadingIndicatorEnabled(enabled);
-}
-
-bool ImageBox::loadingIndicatorEnabled() const
-{
-    return presentation_->loadingIndicatorEnabled();
-}
-
-void ImageBox::setLoadingOverlayEnabled(bool enabled)
-{
-    presentation_->setLoadingOverlayEnabled(enabled);
-}
-
-bool ImageBox::loadingOverlayEnabled() const
-{
-    return presentation_->loadingOverlayEnabled();
-}
-
 bool ImageBox::isLoadingIndicatorActive() const
 {
     return presentation_->isLoadingIndicatorActive();
-}
-
-void ImageBox::setTransition(ImageTransition transition)
-{
-    presentation_->setTransition(transition);
-}
-
-ImageTransition ImageBox::transition() const
-{
-    return presentation_->transition();
-}
-
-void ImageBox::setTransitionDuration(int milliseconds)
-{
-    presentation_->setTransitionDuration(milliseconds);
-}
-
-int ImageBox::transitionDuration() const
-{
-    return presentation_->transitionDuration();
 }
 
 bool ImageBox::isTransitionRunning() const

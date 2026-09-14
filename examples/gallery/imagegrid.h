@@ -38,8 +38,6 @@ private:
     QSharedPointer<cache::ImagePipeline> pipeline_;
     QStringList files_;
     QMap<int, Card> cards_;
-    gui::ImageScaleAlgorithm algorithm_ = gui::ImageScaleAlgorithm::QtSmooth;
-    gui::ImageFit fit_ = gui::ImageFit::Contain;
-    gui::ImageTransition transition_ = gui::ImageTransition::None;
+    gui::ImageBoxConfig config_;
 };
 }

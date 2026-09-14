@@ -2,35 +2,27 @@
 
 #include "imageframepainter.h"
 
-#include <QThread>
-
 #include <algorithm>
-#include <stdexcept>
 
 namespace aster::gui::detail
 {
-ImageBoxPresentation::ImageBoxPresentation(QWidget& owner) : QObject(&owner), owner_(owner)
+ImageBoxPresentation::ImageBoxPresentation(QWidget& owner, const ImageBoxConfig& config)
+    : QObject(&owner), owner_(owner), config_(config)
 {
     loadingTimer_.setInterval(40);
-    QObject::connect(&loadingTimer_, &QTimer::timeout, this,
-                     [this]
-                     {
-                         loadingAngle_ = (loadingAngle_ + 20) % 360;
-                         owner_.update();
-                     });
+    connect(&loadingTimer_, &QTimer::timeout, this, [this] {
+        loadingAngle_ = (loadingAngle_ + 20) % 360;
+        owner_.update();
+    });
     animation_.setStartValue(0.0);
     animation_.setEndValue(1.0);
-    QObject::connect(&animation_, &QVariantAnimation::valueChanged, this,
-                     [this](const QVariant& value)
-                     {
-                         transitionProgress_ = value.toReal();
-                         owner_.update();
-                     });
-    QObject::connect(&animation_, &QVariantAnimation::finished, this,
-                     [this]
-                     {
-                         finishTransition();
-                     });
+    connect(&animation_, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
+        transitionProgress_ = value.toReal();
+        owner_.update();
+    });
+    connect(&animation_, &QVariantAnimation::finished, this, [this] {
+        finishTransition();
+    });
 }
 
 QImage ImageBoxPresentation::image() const
@@ -55,9 +47,9 @@ void ImageBoxPresentation::releaseHandle()
 void ImageBoxPresentation::accept(cache::ImageResult result, QSize target, ImageFit fit, qreal dpr)
 {
     finishTransition();
-    bool animate =
-        transition_ != ImageTransition::None && transitionDuration_ > 0 && owner_.isVisible();
-    if (animate && transition_ == ImageTransition::CrossFade && !currentImage_.isNull())
+    bool animate = config_.transition() != ImageTransition::None &&
+                   config_.transitionDuration() > 0 && owner_.isVisible();
+    if (animate && config_.transition() == ImageTransition::CrossFade && !currentImage_.isNull())
     {
         const auto pixels = cache::physicalTargetSize(owner_.size(), dpr);
         if (pixels && qint64(pixels.value->width()) * pixels.value->height() <= 16 * 1024 * 1024)
@@ -69,7 +61,7 @@ void ImageBoxPresentation::accept(cache::ImageResult result, QSize target, Image
         }
         animate = !transitionCanvas_.isNull() && !transitionIncoming_.isNull();
     }
-    if (animate && transition_ == ImageTransition::CrossFade)
+    if (animate && config_.transition() == ImageTransition::CrossFade)
     {
         previousImage_ = currentImage_;
         previousHandle_ = std::move(currentHandle_);
@@ -85,7 +77,7 @@ void ImageBoxPresentation::accept(cache::ImageResult result, QSize target, Image
         // Set the initial value before starting the animation so the first paint
         // cannot render the incoming frame at the completed state.
         transitionProgress_ = 0;
-        animation_.setDuration(transitionDuration_);
+        animation_.setDuration(config_.transitionDuration());
         animation_.start();
     }
 
@@ -96,10 +88,18 @@ void ImageBoxPresentation::paint(QPainter& painter, qreal dpr, ImageFit fit, boo
 {
     const ImageFramePainter framePainter(owner_.contentsRect(), dpr, fit);
     painter.setClipRect(owner_.contentsRect(), Qt::IntersectClip);
-    const bool errorVisual =
-        error && !errorImage_.isNull() && (currentImage_.isNull() || errorReplacesImage_);
-    if (errorVisual || currentImage_.isNull())
-        framePainter.draw(painter, errorVisual ? errorImage_ : placeholder_, {}, ImageFit::Contain);
+    auto* loadingErrorWidget = config_.loadingErrorWidget();
+    if (loadingErrorWidget && loadingErrorWidget->isVisible())
+        return;
+    const bool statusImage = (state_ == ImageBoxState::Loading || state_ == ImageBoxState::Error) &&
+                             !config_.loadingErrorImage().isNull();
+    const bool errorVisual = error && !config_.errorImage().isNull() &&
+                             (currentImage_.isNull() || config_.errorReplacesImage());
+    if (statusImage)
+        framePainter.draw(painter, config_.loadingErrorImage(), {}, ImageFit::Contain);
+    else if (errorVisual || currentImage_.isNull())
+        framePainter.draw(painter, errorVisual ? config_.errorImage() : config_.placeholder(), {},
+                          ImageFit::Contain);
     else
     {
         const qreal progress = transitionProgress_;
@@ -125,12 +125,14 @@ void ImageBoxPresentation::paint(QPainter& painter, qreal dpr, ImageFit fit, boo
         else
         {
             painter.save();
-            if (transition_ == ImageTransition::Fade || transition_ == ImageTransition::CrossFade ||
-                transition_ == ImageTransition::FadeZoom)
+            if (config_.transition() == ImageTransition::Fade ||
+                config_.transition() == ImageTransition::CrossFade ||
+                config_.transition() == ImageTransition::FadeZoom)
                 painter.setOpacity(progress);
-            if (transition_ == ImageTransition::Slide)
+            if (config_.transition() == ImageTransition::Slide)
                 painter.translate((1 - progress) * owner_.contentsRect().width(), 0);
-            if (transition_ == ImageTransition::Zoom || transition_ == ImageTransition::FadeZoom)
+            if (config_.transition() == ImageTransition::Zoom ||
+                config_.transition() == ImageTransition::FadeZoom)
             {
                 const auto center = QRectF(owner_.contentsRect()).center();
                 painter.translate(center);
@@ -141,8 +143,8 @@ void ImageBoxPresentation::paint(QPainter& painter, qreal dpr, ImageFit fit, boo
             painter.restore();
         }
     }
-    if (owner_.isVisible() && loading_ && loadingIndicatorEnabled_ &&
-        (currentImage_.isNull() || loadingOverlayEnabled_))
+    if (owner_.isVisible() && loading_ && config_.loadingIndicator() &&
+        (currentImage_.isNull() || config_.loadingOverlay()))
     {
         const auto center = QRectF(owner_.contentsRect()).center();
         const qreal side =
@@ -166,110 +168,51 @@ void ImageBoxPresentation::finishTransition()
     owner_.update();
 }
 
-void ImageBoxPresentation::syncLoadingIndicator(bool loading)
+void ImageBoxPresentation::syncState(ImageBoxState state)
 {
+    state_ = state;
+    const bool loading = state == ImageBoxState::Loading;
     loading_ = loading;
-    const bool active = owner_.isVisible() && loading_ && loadingIndicatorEnabled_ &&
-                        (currentImage_.isNull() || loadingOverlayEnabled_);
+    if (auto* widget = config_.loadingErrorWidget())
+    {
+        widget->setGeometry(owner_.contentsRect());
+        widget->setVisible(owner_.isVisible() &&
+                           (state == ImageBoxState::Loading || state == ImageBoxState::Error));
+        widget->raise();
+    }
+    const bool active = owner_.isVisible() && loading_ && !config_.loadingErrorWidget() &&
+                        config_.loadingErrorImage().isNull() && config_.loadingIndicator() &&
+                        (currentImage_.isNull() || config_.loadingOverlay());
     if (active && !loadingTimer_.isActive())
         loadingTimer_.start();
     else if (!active)
         loadingTimer_.stop();
 }
 
-void ImageBoxPresentation::setPlaceholder(const QImage& image)
+void ImageBoxPresentation::prepareConfigChange()
 {
-    Q_ASSERT(QThread::currentThread() == owner_.thread());
-    placeholder_ = image.copy();
+    if (auto* widget = config_.loadingErrorWidget())
+    {
+        widget->hide();
+        widget->setParent(nullptr);
+    }
+}
+
+void ImageBoxPresentation::syncConfig()
+{
+    finishTransition();
+    if (auto* widget = config_.loadingErrorWidget())
+    {
+        widget->setParent(&owner_);
+        widget->setGeometry(owner_.contentsRect());
+    }
+    syncState(state_);
     owner_.update();
-}
-
-QImage ImageBoxPresentation::placeholder() const
-{
-    return placeholder_;
-}
-
-void ImageBoxPresentation::setErrorImage(const QImage& image)
-{
-    Q_ASSERT(QThread::currentThread() == owner_.thread());
-    errorImage_ = image.copy();
-    owner_.update();
-}
-
-QImage ImageBoxPresentation::errorImage() const
-{
-    return errorImage_;
-}
-
-void ImageBoxPresentation::setErrorReplacesImage(bool enabled)
-{
-    Q_ASSERT(QThread::currentThread() == owner_.thread());
-    errorReplacesImage_ = enabled;
-    owner_.update();
-}
-
-bool ImageBoxPresentation::errorReplacesImage() const
-{
-    return errorReplacesImage_;
-}
-
-void ImageBoxPresentation::setLoadingIndicatorEnabled(bool enabled)
-{
-    Q_ASSERT(QThread::currentThread() == owner_.thread());
-    loadingIndicatorEnabled_ = enabled;
-    syncLoadingIndicator(loading_);
-    owner_.update();
-}
-
-bool ImageBoxPresentation::loadingIndicatorEnabled() const
-{
-    return loadingIndicatorEnabled_;
-}
-
-void ImageBoxPresentation::setLoadingOverlayEnabled(bool enabled)
-{
-    Q_ASSERT(QThread::currentThread() == owner_.thread());
-    loadingOverlayEnabled_ = enabled;
-    syncLoadingIndicator(loading_);
-    owner_.update();
-}
-
-bool ImageBoxPresentation::loadingOverlayEnabled() const
-{
-    return loadingOverlayEnabled_;
 }
 
 bool ImageBoxPresentation::isLoadingIndicatorActive() const
 {
     return loadingTimer_.isActive();
-}
-
-void ImageBoxPresentation::setTransition(ImageTransition transition)
-{
-    Q_ASSERT(QThread::currentThread() == owner_.thread());
-    if (int(transition) < 0 || int(transition) > int(ImageTransition::FadeZoom))
-        throw std::invalid_argument("Invalid image transition");
-    finishTransition();
-    transition_ = transition;
-}
-
-ImageTransition ImageBoxPresentation::transition() const
-{
-    return transition_;
-}
-
-void ImageBoxPresentation::setTransitionDuration(int milliseconds)
-{
-    Q_ASSERT(QThread::currentThread() == owner_.thread());
-    if (milliseconds < 0 || milliseconds > 60000)
-        throw std::invalid_argument("Invalid transition duration");
-    finishTransition();
-    transitionDuration_ = milliseconds;
-}
-
-int ImageBoxPresentation::transitionDuration() const
-{
-    return transitionDuration_;
 }
 
 bool ImageBoxPresentation::isTransitionRunning() const
