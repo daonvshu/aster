@@ -70,7 +70,7 @@ public:
      * @brief Returns the loading placeholder. The default is empty.
      * @return Placeholder image.
      */
-    const QImage& placeholder() const;
+    QImage placeholder() const;
 
     /**
      * @brief Sets the loading placeholder. The default is an empty image.
@@ -82,7 +82,7 @@ public:
      * @brief Returns the error image. The default is empty.
      * @return Error image.
      */
-    const QImage& errorImage() const;
+    QImage errorImage() const;
 
     /**
      * @brief Sets the error image. The default is an empty image.
@@ -142,7 +142,7 @@ public:
      * @brief Returns the loading and failure replacement image.
      * @return Replacement image.
      */
-    const QImage& loadingErrorImage() const;
+    QImage loadingErrorImage() const;
 
     /**
      * @brief Sets an image shown during loading and failure. The default is empty.

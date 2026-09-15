@@ -16,6 +16,7 @@
 #include <condition_variable>
 #include <limits>
 #include <mutex>
+#include <stdexcept>
 
 using namespace aster::cache;
 using namespace aster::gui;
@@ -133,6 +134,7 @@ private Q_SLOTS:
                 .offscreenPolicy(OffscreenPolicy::ReleaseHandle);
 
         QVERIFY_EXCEPTION_THROWN(config.fit(static_cast<ImageFit>(-1)), std::invalid_argument);
+        QVERIFY_EXCEPTION_THROWN(config.fit(static_cast<ImageFit>(int(ImageFit::ScaleDown) + 1)), std::invalid_argument);
         QCOMPARE(config.fit(), ImageFit::Cover);
         QVERIFY_EXCEPTION_THROWN(config.scaleAlgorithm(static_cast<ImageScaleAlgorithm>(-1)), std::invalid_argument);
         QVERIFY_EXCEPTION_THROWN(config.scaleAlgorithm(static_cast<ImageScaleAlgorithm>(int(ImageScaleAlgorithm::Lanczos4) + 1)), std::invalid_argument);
@@ -242,6 +244,11 @@ private Q_SLOTS:
         box.setConfig(box.config().loadingErrorWidget(widgetFactory).build());
         QPointer<QLabel> replacement = box.findChild<QLabel*>("customStatus", Qt::FindDirectChildrenOnly);
         QVERIFY(replacement);
+        auto* originalReplacement = replacement.data();
+        const auto throwingFactory = [](QWidget*) -> QWidget* { throw std::runtime_error("factory failure"); };
+        QVERIFY_EXCEPTION_THROWN(box.setConfig(box.config().loadingErrorWidget(throwingFactory).build()), std::runtime_error);
+        QCOMPARE(box.findChild<QLabel*>("customStatus", Qt::FindDirectChildrenOnly), originalReplacement);
+        QVERIFY(originalReplacement->parentWidget() == &box);
         box.setSource("https://example.test/a");
         QTRY_COMPARE(box.state(), ImageBoxState::Loading);
         QVERIFY(replacement->isVisible());
@@ -545,10 +552,10 @@ private Q_SLOTS:
         flushDeletes();
         QCOMPARE(fixture.active->stats().entries, qint64(2));
         QTRY_VERIFY(box.transitionProgress() >= 0.4);
+        const auto progress = box.transitionProgress();
         const auto blended = pixel();
-        QVERIFY(blended.red() > 0);
-        QVERIFY(blended.blue() > 0);
-        QVERIFY(qAbs(blended.red() + blended.blue() - 255) <= 3);
+        QVERIFY(qAbs(blended.red() - qRound(255 * (1 - progress))) <= 3);
+        QVERIFY(qAbs(blended.blue() - qRound(255 * progress)) <= 3);
         QVERIFY(blended.green() <= 3);
         QTRY_VERIFY_WITH_TIMEOUT(!box.isTransitionRunning(), 2000);
         QCOMPARE(box.transitionProgress(), qreal(1));

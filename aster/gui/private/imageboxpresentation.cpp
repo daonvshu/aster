@@ -171,29 +171,44 @@ void ImageBoxPresentation::clearLoadingErrorWidget() {
     delete widget;
 }
 
-void ImageBoxPresentation::syncConfig(bool transitionChanged, bool widgetFactoryChanged) {
+QWidget* ImageBoxPresentation::createLoadingErrorWidget(const ImageBoxConfig& config) {
+    if (!config.loadingErrorWidgetFactory())
+        return nullptr;
+
+    auto* widget = config.loadingErrorWidgetFactory()(&owner_);
+    if (!widget)
+        return nullptr;
+    if (widget == &owner_ || widget->isAncestorOf(&owner_)) {
+        if (widget->parent() == &owner_)
+            delete widget;
+        throw std::invalid_argument("Loading widget factory returned the ImageBox or its ancestor");
+    }
+    if (widget->thread() != owner_.thread()) {
+        delete widget;
+        throw std::invalid_argument("Loading widget factory returned a widget from another thread");
+    }
+    widget->setParent(&owner_);
+    widget->setGeometry(owner_.contentsRect());
+    return widget;
+}
+
+void ImageBoxPresentation::syncConfig(bool transitionChanged, bool widgetFactoryChanged, QWidget* replacement) {
     if (transitionChanged)
         finishTransition();
-    if (widgetFactoryChanged && config_.loadingErrorWidgetFactory()) {
-        auto* widget = config_.loadingErrorWidgetFactory()(&owner_);
-        if (widget == &owner_ || (widget && widget->isAncestorOf(&owner_)))
-            throw std::invalid_argument("Loading widget factory returned the ImageBox or its ancestor");
-        if (widget && widget->thread() != owner_.thread())
-            throw std::invalid_argument("Loading widget factory returned a widget from another thread");
-        if (!widget) {
-            syncState(state_);
-            owner_.update();
-            return;
-        }
-
-        widget->setParent(&owner_);
-        widget->setGeometry(owner_.contentsRect());
-        loadingErrorWidget_ = widget;
-        connect(widget, &QObject::destroyed, this, [this] {
+    if (widgetFactoryChanged) {
+        auto* previous = loadingErrorWidget_.data();
+        if (previous) {
             loadingErrorWidget_.clear();
-            syncState(state_);
-            owner_.update();
-        });
+            disconnect(previous, nullptr, this, nullptr);
+            delete previous;
+        }
+        loadingErrorWidget_ = replacement;
+        if (replacement)
+            connect(replacement, &QObject::destroyed, this, [this] {
+                loadingErrorWidget_.clear();
+                syncState(state_);
+                owner_.update();
+            });
     }
     syncState(state_);
     owner_.update();

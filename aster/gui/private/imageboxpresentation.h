@@ -20,7 +20,8 @@ public:
     void finishTransition();
     void syncState(ImageBoxState state);
     void clearLoadingErrorWidget();
-    void syncConfig(bool transitionChanged, bool widgetFactoryChanged);
+    QWidget* createLoadingErrorWidget(const ImageBoxConfig& config);
+    void syncConfig(bool transitionChanged, bool widgetFactoryChanged, QWidget* replacement);
     bool isLoadingIndicatorActive() const;
     bool isTransitionRunning() const;
     qreal transitionProgress() const;

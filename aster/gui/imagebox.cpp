@@ -46,11 +46,12 @@ void ImageBox::setConfig(const ImageBoxConfig& config) {
     const bool offscreenPolicyChanged = config_.offscreenPolicy_ != config.offscreenPolicy_;
     const bool transitionChanged = config_.transition_ != config.transition_ || config_.transitionDuration_ != config.transitionDuration_;
     const bool widgetFactoryChanged = config_.loadingErrorWidgetFactory_ != config.loadingErrorWidgetFactory_;
+    QWidget* replacement = nullptr;
     if (widgetFactoryChanged)
-        presentation_->clearLoadingErrorWidget();
+        replacement = presentation_->createLoadingErrorWidget(config);
     config_ = config;
     resizeTimer_.setInterval(config.resizeDebounce_);
-    presentation_->syncConfig(transitionChanged, widgetFactoryChanged);
+    presentation_->syncConfig(transitionChanged, widgetFactoryChanged, replacement);
     if (requestChanged && !source_.isEmpty() && (suspended_ || !isVisible()))
         resumePending_ = true;
     if (suspended_ || (offscreenPolicyChanged && !isVisible())) {

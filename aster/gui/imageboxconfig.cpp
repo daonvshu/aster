@@ -51,7 +51,7 @@ ImageBoxConfig& ImageBoxConfig::sizeBucket(int pixels) {
     return *this;
 }
 
-const QImage& ImageBoxConfig::placeholder() const {
+QImage ImageBoxConfig::placeholder() const {
     return placeholder_;
 }
 
@@ -60,7 +60,7 @@ ImageBoxConfig& ImageBoxConfig::placeholder(const QImage& image) {
     return *this;
 }
 
-const QImage& ImageBoxConfig::errorImage() const {
+QImage ImageBoxConfig::errorImage() const {
     return errorImage_;
 }
 
@@ -106,7 +106,7 @@ ImageBoxConfig& ImageBoxConfig::loadingErrorWidget(LoadingErrorWidgetFactory fac
     return *this;
 }
 
-const QImage& ImageBoxConfig::loadingErrorImage() const {
+QImage ImageBoxConfig::loadingErrorImage() const {
     return loadingErrorImage_;
 }
 
