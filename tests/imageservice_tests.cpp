@@ -30,6 +30,27 @@ public:
     }
 };
 
+class TestSourceLoader final : public IImageSourceLoader {
+public:
+    int loads = 0;
+    bool throwOnLoad = false;
+    QByteArray bytes = "cGxhaW4=";
+
+    Result<SourceKey> key(const ImageSource&) const override {
+        return Result<SourceKey>::success({QByteArray(32, 's'), QByteArray(32, 'n')});
+    }
+
+    Result<SourcePayload> load(const ImageSource&, const SourceKey&, const SourceLoadOptions&, const std::atomic<bool>&) override {
+        ++loads;
+        if (throwOnLoad)
+            throw std::runtime_error("source loader failure");
+        SourcePayload payload;
+        payload.bytes = bytes;
+        payload.contentType = "application/octet-stream";
+        return Result<SourcePayload>::success(std::move(payload), CacheResultSource::Data);
+    }
+};
+
 void require(bool condition, const char* message = "ImageService test failed") {
     if (!condition)
         throw std::runtime_error(message);
@@ -115,7 +136,7 @@ void httpInterceptorTests() {
     require(&fluent.addInterceptor(first).addInterceptor(second) == &fluent);
     require(fluent.httpInterceptors.size() == 2);
     try {
-        fluent.addInterceptor({});
+        fluent.addInterceptor(QSharedPointer<IHttpInterceptor>{});
         require(false);
     } catch (const std::invalid_argument&) {
     }
@@ -126,11 +147,95 @@ void httpInterceptorTests() {
     }
 }
 
+void sourceInterceptorTests() {
+    auto events = QSharedPointer<QStringList>::create();
+    auto terminal = QSharedPointer<TestSourceLoader>::create();
+    auto first = SourceInterceptor::create([events](SourceInterceptorChain& chain, SourceLoadRequest request, const std::atomic<bool>& cancelled) {
+        events->push_back("first-before");
+        auto result = chain.proceed(std::move(request), cancelled);
+        events->push_back("first-after");
+        return result;
+    });
+    auto decrypt = SourceInterceptor::create([events](SourceInterceptorChain& chain, SourceLoadRequest request, const std::atomic<bool>& cancelled) {
+        events->push_back("decrypt-before");
+        auto result = chain.proceed(std::move(request), cancelled);
+        if (result) {
+            result.value->bytes = QByteArray::fromBase64(result.value->bytes);
+            result.value->contentType = "image/test";
+        }
+        events->push_back("decrypt-after");
+        return result;
+    });
+    SourceInterceptorLoader loader(terminal, {first, decrypt});
+    ImageSource source;
+    source.data = "ignored";
+    auto key = loader.key(source);
+    require(bool(key), "Source interceptor loader did not delegate key generation");
+    SourceLoadOptions options;
+    options.maxBytes = 64;
+    std::atomic<bool> cancelled{false};
+    auto result = loader.load(source, *key.value, options, cancelled);
+    require(result && result.value->bytes == "plain" && result.value->contentType == "image/test", "Source interceptor did not transform the payload");
+    require(result.source == CacheResultSource::Data, "Source interceptor did not preserve the payload origin");
+    require(events->join('|') == "first-before|decrypt-before|decrypt-after|first-after", "Source interceptor order is incorrect");
+
+    auto expand = SourceInterceptor::create([](SourceInterceptorChain& chain, SourceLoadRequest request, const std::atomic<bool>& cancelled) {
+        auto result = chain.proceed(std::move(request), cancelled);
+        if (result)
+            result.value->bytes = "12345";
+        return result;
+    });
+    terminal->bytes = "raw";
+    SourceInterceptorLoader expandingLoader(terminal, {expand});
+    options.maxBytes = 4;
+    result = expandingLoader.load(source, *key.value, options, cancelled);
+    require(!result && result.error == ImageError::InvalidRequest, "Expanded source payload bypassed the byte limit");
+    terminal->bytes = "cGxhaW4=";
+
+    auto throwing = SourceInterceptor::create([](SourceInterceptorChain&, SourceLoadRequest, const std::atomic<bool>&) -> Result<SourcePayload> {
+        throw std::runtime_error("source interceptor failure");
+    });
+    SourceInterceptorLoader throwingLoader(terminal, {throwing});
+    options.maxBytes = 64;
+    result = throwingLoader.load(source, *key.value, options, cancelled);
+    require(!result && result.error == ImageError::ProcessingError, "Source interceptor exception was not converted to a failure");
+
+    terminal->throwOnLoad = true;
+    SourceInterceptorLoader failingLoader(terminal, {first});
+    result = failingLoader.load(source, *key.value, options, cancelled);
+    require(!result && result.error == ImageError::IoError, "Source loader exception was not preserved as an I/O failure");
+    terminal->throwOnLoad = false;
+
+    const auto loads = terminal->loads;
+    cancelled.store(true);
+    result = loader.load(source, *key.value, options, cancelled);
+    require(!result && result.error == ImageError::Cancelled && terminal->loads == loads, "Cancelled source request unexpectedly reached the loader");
+
+    ImageServiceConfig fluent;
+    require(&fluent.addInterceptor(first).addInterceptor(decrypt) == &fluent);
+    require(fluent.sourceInterceptors.size() == 2);
+    try {
+        fluent.addInterceptor(QSharedPointer<ISourceInterceptor>{});
+        require(false);
+    } catch (const std::invalid_argument&) {
+    }
+    try {
+        SourceInterceptor::create({});
+        require(false);
+    } catch (const std::invalid_argument&) {
+    }
+    try {
+        SourceInterceptorLoader invalid({}, {});
+        require(false);
+    } catch (const std::invalid_argument&) {
+    }
+}
+
 void independentPipelineTests() {
     ImageServiceConfig base;
-    base.renderer = [](const auto&, const auto& options, const auto&) {
+    base.renderer = [](const QByteArray& bytes, const auto& options, const auto&) {
         QImage image(options.physicalTargetSize, QImage::Format_ARGB32);
-        image.fill(Qt::green);
+        image.fill(bytes == "page-a" ? Qt::red : bytes == "page-b" ? Qt::blue : Qt::green);
         return ImageResult::success(image);
     };
 
@@ -141,6 +246,12 @@ void independentPipelineTests() {
         request.options.headers.insert("x-page", "a");
         return chain.proceed(std::move(request), cancelled);
     }));
+    pageAConfig.addInterceptor(SourceInterceptor::create([](SourceInterceptorChain& chain, SourceLoadRequest request, const std::atomic<bool>& cancelled) {
+        auto result = chain.proceed(std::move(request), cancelled);
+        if (result)
+            result.value->bytes = "page-a";
+        return result;
+    }));
 
     auto pageBNetwork = QSharedPointer<TestNetwork>::create();
     auto pageBConfig = base;
@@ -149,14 +260,22 @@ void independentPipelineTests() {
         request.options.headers.insert("x-page", "b");
         return chain.proceed(std::move(request), cancelled);
     }));
+    pageBConfig.addInterceptor(SourceInterceptor::create([](SourceInterceptorChain& chain, SourceLoadRequest request, const std::atomic<bool>& cancelled) {
+        auto result = chain.proceed(std::move(request), cancelled);
+        if (result)
+            result.value->bytes = "page-b";
+        return result;
+    }));
 
     auto pageAPipeline = ImageService::createPipeline(pageAConfig);
     auto pageBPipeline = ImageService::createPipeline(pageBConfig);
     require(pageAPipeline && pageBPipeline && pageAPipeline != pageBPipeline, "Independent pipelines were not created");
     require(!ImageService::isConfigured(), "Independent pipeline creation changed the global service state");
 
-    require(bool(loadNetwork(pageAPipeline)), "Page A pipeline request failed");
-    require(bool(loadNetwork(pageBPipeline)), "Page B pipeline request failed");
+    const auto pageAResult = loadNetwork(pageAPipeline);
+    const auto pageBResult = loadNetwork(pageBPipeline);
+    require(pageAResult && pageAResult.value->pixelColor(0, 0) == QColor(Qt::red), "Page A source interceptor was not applied");
+    require(pageBResult && pageBResult.value->pixelColor(0, 0) == QColor(Qt::blue), "Page B source interceptor was not applied");
     require(pageANetwork->calls == 1 && pageANetwork->lastOptions.headers.value("x-page") == "a", "Page A request did not use its interceptor");
     require(pageBNetwork->calls == 1 && pageBNetwork->lastOptions.headers.value("x-page") == "b", "Page B request did not use its interceptor");
 }
@@ -164,6 +283,7 @@ void independentPipelineTests() {
 
 void imageServiceTests() {
     httpInterceptorTests();
+    sourceInterceptorTests();
     independentPipelineTests();
     require(!ImageService::isConfigured());
     bool rejected = false;
@@ -189,6 +309,7 @@ void imageServiceTests() {
     config.sourceCache.encodedData = true;
     auto serviceNetwork = QSharedPointer<TestNetwork>::create();
     auto serviceIntercepted = QSharedPointer<std::atomic<int>>::create(0);
+    auto sourceIntercepted = QSharedPointer<std::atomic<int>>::create(0);
     auto serviceInterceptor =
             HttpInterceptor::create([serviceIntercepted](HttpInterceptorChain& chain, HttpRequest request, const std::atomic<bool>& cancelled) {
                 ++*serviceIntercepted;
@@ -197,6 +318,12 @@ void imageServiceTests() {
             });
     config.network = serviceNetwork;
     config.addInterceptor(serviceInterceptor);
+    config.addInterceptor(
+            SourceInterceptor::create([sourceIntercepted](SourceInterceptorChain& chain, SourceLoadRequest request, const std::atomic<bool>& cancelled) {
+                if (request.source.kind == ImageSource::Kind::Network)
+                    ++*sourceIntercepted;
+                return chain.proceed(std::move(request), cancelled);
+            }));
     config.renderer = [renders](const auto&, const auto& options, const auto&) {
         ++*renders;
         QImage image(options.physicalTargetSize, QImage::Format_ARGB32);
@@ -254,10 +381,12 @@ void imageServiceTests() {
     auto networkResult = loadNetwork(first);
     require(networkResult && networkResult.source == CacheResultSource::Network, "Intercepted network result is invalid");
     require(serviceIntercepted->load() == 1 && serviceNetwork->calls == 1, "Initial network request did not traverse the interceptor once");
+    require(sourceIntercepted->load() == 1, "Initial network request did not traverse the source interceptor once");
     require(serviceNetwork->lastOptions.headers.value("authorization") == "test-token", "Interceptor header did not reach the network service");
     auto cachedNetworkResult = loadNetwork(first);
     require(cachedNetworkResult && cachedNetworkResult.source == CacheResultSource::ActiveResource, "Cached network result did not use active memory");
     require(serviceIntercepted->load() == 1 && serviceNetwork->calls == 1, "Cached network result unexpectedly traversed the interceptor");
+    require(sourceIntercepted->load() == 2, "Encoded cache hit did not traverse the source interceptor");
     require(load(ImageService::pipeline()).source == CacheResultSource::ActiveResource);
     require(renders->load() == 2);
     const auto stats = first->cacheStats();

@@ -45,6 +45,8 @@ QSharedPointer<ImagePipeline> buildPipeline(const ImageServiceConfig& config) {
             network = QSharedPointer<HttpInterceptorNetworkService>::create(network, config.httpInterceptors);
         loader = QSharedPointer<CachedSourceLoader>::create(encoded, config.sourceDisk, network, config.clock, config.sourceCache);
     }
+    if (!config.sourceInterceptors.isEmpty())
+        loader = QSharedPointer<SourceInterceptorLoader>::create(loader, config.sourceInterceptors);
 
     PipelineResources resources;
     resources.renderedDisk = config.renderedDisk;
@@ -59,6 +61,13 @@ ImageServiceConfig& ImageServiceConfig::addInterceptor(QSharedPointer<IHttpInter
     if (!interceptor)
         throw std::invalid_argument("HTTP interceptor must not be null");
     httpInterceptors.push_back(std::move(interceptor));
+    return *this;
+}
+
+ImageServiceConfig& ImageServiceConfig::addInterceptor(QSharedPointer<ISourceInterceptor> interceptor) {
+    if (!interceptor)
+        throw std::invalid_argument("Source interceptor must not be null");
+    sourceInterceptors.push_back(std::move(interceptor));
     return *this;
 }
 

@@ -96,14 +96,45 @@ aster::cache::ImageService::configure(config);
 
 Interceptors run in registration order only when a real HTTP request is needed; memory and disk cache hits bypass them. Add more interceptors by chaining further `.addInterceptor(...)` calls. Implementing `IHttpInterceptor` directly remains available for stateful reusable classes. Interceptors may be called concurrently and must honor the cancellation flag. Headers added by an interceptor do not automatically change the source cache key. Authentication-dependent content must use a stable `ImageSource::context.authScope` value so different accounts do not share cached data.
 
+### Source Interceptors
+
+`SourceInterceptor` processes bytes from every source type after the underlying source cache lookup and before image decoding. It can decrypt, decompress, validate, or unpack local files, Qt resources, memory data, and HTTP responses:
+
+```cpp
+config.addInterceptor(aster::cache::SourceInterceptor::create(
+    [](aster::cache::SourceInterceptorChain& chain,
+       aster::cache::SourceLoadRequest request,
+       const std::atomic<bool>& cancelled) {
+        auto result = chain.proceed(std::move(request), cancelled);
+        if (!result || cancelled.load())
+            return result;
+
+        auto plain = decrypt(result.value->bytes);
+        if (plain.isEmpty()) {
+            return aster::cache::Result<aster::cache::SourcePayload>::failure(
+                aster::cache::ImageError::ProcessingError,
+                "Source decryption failed");
+        }
+        result.value->bytes = std::move(plain);
+        result.value->contentType = "image/png";
+        return result;
+    }));
+```
+
+Source interceptors run in registration order and may short-circuit or retry the remaining chain. They may execute concurrently and must honor cancellation. The configured byte limit is checked again after interception. Encoded memory and source disk caches retain the original bytes; transformed bytes are hashed into the rendered cache key, so source-cache hits are intercepted again while rendered entries remain separated by transformed content.
+
+`ImageServiceConfig::addInterceptor(...)` is overloaded for HTTP and source interceptor pointer types, so both kinds use the same fluent configuration method.
+
 Different pages can create independent pipelines when they require different interceptor chains:
 
 ```cpp
 auto pageAConfig = baseConfig;
 pageAConfig.addInterceptor(aster::cache::HttpInterceptor::create(pageAHandler));
+pageAConfig.addInterceptor(aster::cache::SourceInterceptor::create(pageASourceHandler));
 
 auto pageBConfig = baseConfig;
 pageBConfig.addInterceptor(aster::cache::HttpInterceptor::create(pageBHandler));
+pageBConfig.addInterceptor(aster::cache::SourceInterceptor::create(pageBSourceHandler));
 
 auto pageAPipeline = aster::cache::ImageService::createPipeline(pageAConfig);
 auto pageBPipeline = aster::cache::ImageService::createPipeline(pageBConfig);

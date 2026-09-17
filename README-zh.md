@@ -96,14 +96,45 @@ aster::cache::ImageService::configure(config);
 
 拦截器按照注册顺序执行，并且只在确实需要发起 HTTP 请求时运行；命中内存或磁盘缓存时不会执行。继续链式调用 `.addInterceptor(...)` 可以添加多个拦截器；需要封装可复用状态时仍可直接实现 `IHttpInterceptor`。拦截器可能被并发调用，且必须响应取消标记。拦截器添加的请求头不会自动改变源缓存键；依赖登录身份的内容必须设置稳定的 `ImageSource::context.authScope`，避免不同账号共用缓存数据。
 
+### Source 拦截器
+
+`SourceInterceptor` 在底层源缓存查找之后、图片解码之前处理所有来源的字节，可用于解密、解压、校验或拆包本地文件、Qt 资源、内存数据和 HTTP 响应：
+
+```cpp
+config.addInterceptor(aster::cache::SourceInterceptor::create(
+    [](aster::cache::SourceInterceptorChain& chain,
+       aster::cache::SourceLoadRequest request,
+       const std::atomic<bool>& cancelled) {
+        auto result = chain.proceed(std::move(request), cancelled);
+        if (!result || cancelled.load())
+            return result;
+
+        auto plain = decrypt(result.value->bytes);
+        if (plain.isEmpty()) {
+            return aster::cache::Result<aster::cache::SourcePayload>::failure(
+                aster::cache::ImageError::ProcessingError,
+                "Source decryption failed");
+        }
+        result.value->bytes = std::move(plain);
+        result.value->contentType = "image/png";
+        return result;
+    }));
+```
+
+Source 拦截器按注册顺序运行，可以短路返回或重试后续链。它可能被并发调用，并且必须响应取消标记；配置的字节上限会在拦截完成后再次检查。编码内存缓存和源磁盘缓存保留原始字节，转换后字节的哈希会进入渲染缓存键，因此命中源缓存时仍会执行拦截器，不同转换内容的渲染缓存也会保持隔离。
+
+`ImageServiceConfig::addInterceptor(...)` 针对 HTTP 和 Source 拦截器指针类型提供重载，因此两类拦截器使用同一个链式配置函数。
+
 不同页面需要不同拦截器链时，可以分别创建独立 Pipeline：
 
 ```cpp
 auto pageAConfig = baseConfig;
 pageAConfig.addInterceptor(aster::cache::HttpInterceptor::create(pageAHandler));
+pageAConfig.addInterceptor(aster::cache::SourceInterceptor::create(pageASourceHandler));
 
 auto pageBConfig = baseConfig;
 pageBConfig.addInterceptor(aster::cache::HttpInterceptor::create(pageBHandler));
+pageBConfig.addInterceptor(aster::cache::SourceInterceptor::create(pageBSourceHandler));
 
 auto pageAPipeline = aster::cache::ImageService::createPipeline(pageAConfig);
 auto pageBPipeline = aster::cache::ImageService::createPipeline(pageBConfig);

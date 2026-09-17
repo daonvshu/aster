@@ -3,6 +3,7 @@
 #include "aster/cache/pipeline/imagepipeline.h"
 #include "aster/cache/source/cachedsourceloader.h"
 #include "aster/cache/source/httpinterceptor.h"
+#include "aster/cache/source/sourceinterceptor.h"
 
 #include <QSharedPointer>
 
@@ -21,6 +22,7 @@ struct ImageServiceConfig {
     SourceCacheConfig sourceCache;
     QSharedPointer<INetworkService> network;
     QList<QSharedPointer<IHttpInterceptor>> httpInterceptors;
+    QList<QSharedPointer<ISourceInterceptor>> sourceInterceptors;
     QSharedPointer<IDiskCache> sourceDisk;
     QSharedPointer<RenderedDiskCache> renderedDisk;
     QSharedPointer<IImageSourceLoader> sourceLoader;
@@ -31,6 +33,13 @@ struct ImageServiceConfig {
      * @return This configuration for chained calls.
      */
     ImageServiceConfig& addInterceptor(QSharedPointer<IHttpInterceptor> interceptor);
+
+    /**
+     * @brief Adds a source interceptor. Interceptors run after source cache lookup and in registration order.
+     * @param interceptor Interceptor to add. It must not be null.
+     * @return This configuration for chained calls.
+     */
+    ImageServiceConfig& addInterceptor(QSharedPointer<ISourceInterceptor> interceptor);
 };
 
 class ImageService final {
@@ -39,7 +48,7 @@ public:
 
     /**
      * @brief Creates an independent image pipeline without changing the global service state.
-     * @param config Pipeline dependencies, cache settings, and HTTP interceptors.
+     * @param config Pipeline dependencies, cache settings, and interceptors.
      * @return Independently owned image pipeline.
      */
     static QSharedPointer<ImagePipeline> createPipeline(const ImageServiceConfig& config);
