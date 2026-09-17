@@ -10,6 +10,7 @@ add_library(aster_cache STATIC
     cache/rendereddiskcache.cpp
     pipeline/activeresourcestore.cpp
     source/cachedsourceloader.cpp
+    source/httpinterceptor.cpp
     source/imagesource.cpp
     pipeline/imagesubscription.cpp
     pipeline/imagesubscription.h

@@ -76,6 +76,43 @@ QObject::connect(subscription, &aster::cache::ImageSubscription::finished,
 
 `ImageSubscription` 由 Qt parent 管理。调用 `cancel()` 或销毁 parent 会取消订阅。`physicalTargetSize` 使用物理像素。
 
+### HTTP 拦截器
+
+使用 `HttpInterceptor::create(...)` 可以修改或观察请求、短路返回响应，或者重试后续拦截器链：
+
+```cpp
+aster::cache::ImageServiceConfig config;
+config.renderer = aster::cache::ImageRenderer{};
+config.network = QSharedPointer<aster::cache::QtNetworkService>::create();
+config.addInterceptor(aster::cache::HttpInterceptor::create(
+    [](aster::cache::HttpInterceptorChain& chain,
+       aster::cache::HttpRequest request,
+       const std::atomic<bool>& cancelled) {
+        request.options.headers.insert("authorization", "Bearer " + token());
+        return chain.proceed(std::move(request), cancelled);
+    }));
+aster::cache::ImageService::configure(config);
+```
+
+拦截器按照注册顺序执行，并且只在确实需要发起 HTTP 请求时运行；命中内存或磁盘缓存时不会执行。继续链式调用 `.addInterceptor(...)` 可以添加多个拦截器；需要封装可复用状态时仍可直接实现 `IHttpInterceptor`。拦截器可能被并发调用，且必须响应取消标记。拦截器添加的请求头不会自动改变源缓存键；依赖登录身份的内容必须设置稳定的 `ImageSource::context.authScope`，避免不同账号共用缓存数据。
+
+不同页面需要不同拦截器链时，可以分别创建独立 Pipeline：
+
+```cpp
+auto pageAConfig = baseConfig;
+pageAConfig.addInterceptor(aster::cache::HttpInterceptor::create(pageAHandler));
+
+auto pageBConfig = baseConfig;
+pageBConfig.addInterceptor(aster::cache::HttpInterceptor::create(pageBHandler));
+
+auto pageAPipeline = aster::cache::ImageService::createPipeline(pageAConfig);
+auto pageBPipeline = aster::cache::ImageService::createPipeline(pageBConfig);
+pageAImageBox->setPipeline(pageAPipeline);
+pageBImageBox->setPipeline(pageBPipeline);
+```
+
+`createPipeline()` 不会读取或改变全局 `ImageService` 状态。每个返回的 Pipeline 拥有自己的内存缓存和拦截器链；只有在线程安全的前提下，多个配置才应共享注入的依赖实例。如果不同拦截器可能让同一 URL 产生不同内容，应使用不同的 `ImageSource::context.authScope`、缓存命名空间或磁盘缓存，避免跨页面复用错误数据。
+
 ## ImageBox 使用示例
 
 ```cpp

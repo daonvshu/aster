@@ -76,6 +76,43 @@ QObject::connect(subscription, &aster::cache::ImageSubscription::finished,
 
 `ImageSubscription` is owned by its Qt parent. Calling `cancel()` or destroying the parent cancels the subscription. `physicalTargetSize` is expressed in physical pixels.
 
+### HTTP Interceptors
+
+Use `HttpInterceptor::create(...)` to modify or observe requests, short-circuit responses, or retry the remaining chain:
+
+```cpp
+aster::cache::ImageServiceConfig config;
+config.renderer = aster::cache::ImageRenderer{};
+config.network = QSharedPointer<aster::cache::QtNetworkService>::create();
+config.addInterceptor(aster::cache::HttpInterceptor::create(
+    [](aster::cache::HttpInterceptorChain& chain,
+       aster::cache::HttpRequest request,
+       const std::atomic<bool>& cancelled) {
+        request.options.headers.insert("authorization", "Bearer " + token());
+        return chain.proceed(std::move(request), cancelled);
+    }));
+aster::cache::ImageService::configure(config);
+```
+
+Interceptors run in registration order only when a real HTTP request is needed; memory and disk cache hits bypass them. Add more interceptors by chaining further `.addInterceptor(...)` calls. Implementing `IHttpInterceptor` directly remains available for stateful reusable classes. Interceptors may be called concurrently and must honor the cancellation flag. Headers added by an interceptor do not automatically change the source cache key. Authentication-dependent content must use a stable `ImageSource::context.authScope` value so different accounts do not share cached data.
+
+Different pages can create independent pipelines when they require different interceptor chains:
+
+```cpp
+auto pageAConfig = baseConfig;
+pageAConfig.addInterceptor(aster::cache::HttpInterceptor::create(pageAHandler));
+
+auto pageBConfig = baseConfig;
+pageBConfig.addInterceptor(aster::cache::HttpInterceptor::create(pageBHandler));
+
+auto pageAPipeline = aster::cache::ImageService::createPipeline(pageAConfig);
+auto pageBPipeline = aster::cache::ImageService::createPipeline(pageBConfig);
+pageAImageBox->setPipeline(pageAPipeline);
+pageBImageBox->setPipeline(pageBPipeline);
+```
+
+`createPipeline()` does not read or change the global `ImageService` state. Each returned pipeline owns its own memory caches and interceptor chain. Configuration objects may share injected dependencies only when those dependencies support concurrent access. If interceptors can produce different content for the same URL, use distinct `ImageSource::context.authScope` values, cache namespaces, or disk caches to prevent cross-page cache reuse.
+
 ## ImageBox Example
 
 ```cpp

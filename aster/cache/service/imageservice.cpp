@@ -6,6 +6,7 @@
 
 #include <mutex>
 #include <stdexcept>
+#include <utility>
 
 namespace aster::cache {
 namespace {
@@ -22,13 +23,15 @@ ServiceState& state() {
     return instance;
 }
 
-QSharedPointer<ImagePipeline> createPipeline(const ImageServiceConfig& config) {
+QSharedPointer<ImagePipeline> buildPipeline(const ImageServiceConfig& config) {
     if (!config.renderer || !config.clock || config.workerCount <= 0 || config.renderedMemoryBytes < 0 || config.encodedMemoryBytes < 0 ||
         config.activeMemoryBytes < 0 || config.maxEncodedEntryBytes <= 0)
         throw std::invalid_argument("Invalid image service configuration");
 
-    if (config.sourceLoader && (config.network || config.sourceDisk || config.encodedMemoryBytes != 0))
+    if (config.sourceLoader && (config.network || !config.httpInterceptors.isEmpty() || config.sourceDisk || config.encodedMemoryBytes != 0))
         throw std::invalid_argument("Custom source loader owns its source cache configuration");
+    if (!config.httpInterceptors.isEmpty() && !config.network)
+        throw std::invalid_argument("HTTP interceptors require a network service");
 
     auto memory = QSharedPointer<RenderedMemoryCache>::create(config.renderedMemoryBytes, config.clock);
     auto loader = config.sourceLoader;
@@ -37,7 +40,10 @@ QSharedPointer<ImagePipeline> createPipeline(const ImageServiceConfig& config) {
         if (config.encodedMemoryBytes > 0)
             encoded = QSharedPointer<EncodedMemoryCache>::create(config.encodedMemoryBytes, config.maxEncodedEntryBytes, config.clock);
 
-        loader = QSharedPointer<CachedSourceLoader>::create(encoded, config.sourceDisk, config.network, config.clock, config.sourceCache);
+        auto network = config.network;
+        if (!config.httpInterceptors.isEmpty())
+            network = QSharedPointer<HttpInterceptorNetworkService>::create(network, config.httpInterceptors);
+        loader = QSharedPointer<CachedSourceLoader>::create(encoded, config.sourceDisk, network, config.clock, config.sourceCache);
     }
 
     PipelineResources resources;
@@ -48,6 +54,17 @@ QSharedPointer<ImagePipeline> createPipeline(const ImageServiceConfig& config) {
     return QSharedPointer<ImagePipeline>::create(memory, loader, config.renderer, config.workerCount, config.events, std::move(resources));
 }
 } // namespace
+
+ImageServiceConfig& ImageServiceConfig::addInterceptor(QSharedPointer<IHttpInterceptor> interceptor) {
+    if (!interceptor)
+        throw std::invalid_argument("HTTP interceptor must not be null");
+    httpInterceptors.push_back(std::move(interceptor));
+    return *this;
+}
+
+QSharedPointer<ImagePipeline> ImageService::createPipeline(const ImageServiceConfig& config) {
+    return buildPipeline(config);
+}
 
 void ImageService::configure(const ImageServiceConfig& config) {
     auto& service = state();
