@@ -17,6 +17,8 @@ public:
     void setAlgorithm(gui::ImageScaleAlgorithm algorithm);
     void setFit(gui::ImageFit fit);
     void setTransition(gui::ImageTransition transition);
+    void setTransitionPolicy(gui::TransitionPolicy policy);
+    void setOffscreenPolicy(gui::OffscreenPolicy policy);
     void refresh();
     void runRace(const QString& slow, const QString& fast);
 

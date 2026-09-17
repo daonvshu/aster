@@ -44,7 +44,12 @@ void ImageBoxPresentation::releaseHandle() {
 
 void ImageBoxPresentation::accept(cache::ImageResult result, QSize target, ImageFit fit, qreal dpr) {
     finishTransition();
-    bool animate = config_.transition() != ImageTransition::None && config_.transitionDuration() > 0 && owner_.isVisible();
+    const bool memorySource = result.source == cache::CacheResultSource::ActiveResource || result.source == cache::CacheResultSource::RenderedMemory ||
+            result.source == cache::CacheResultSource::EncodedMemory;
+    const bool firstLoad = !hasAcceptedImage_;
+    const bool animateByPolicy = config_.transitionPolicy() == TransitionPolicy::Always || !memorySource ||
+            (config_.transitionPolicy() == TransitionPolicy::FirstLoadOrNonMemoryCache && firstLoad);
+    bool animate = animateByPolicy && config_.transition() != ImageTransition::None && config_.transitionDuration() > 0 && owner_.isVisible();
     if (animate && config_.transition() == ImageTransition::CrossFade && !currentImage_.isNull()) {
         const auto pixels = cache::physicalTargetSize(owner_.size(), dpr);
         if (pixels && qint64(pixels.value->width()) * pixels.value->height() <= 16 * 1024 * 1024) {
@@ -62,6 +67,7 @@ void ImageBoxPresentation::accept(cache::ImageResult result, QSize target, Image
         previousFit_ = currentFit_;
     }
     currentImage_ = std::move(*result.value);
+    hasAcceptedImage_ = true;
     currentTarget_ = target;
     currentFit_ = fit;
     currentHandle_ = std::move(result.handle);

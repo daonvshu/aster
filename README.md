@@ -114,7 +114,7 @@ auto config = aster::gui::ImageBoxConfig()
 box->setConfig(config);
 ```
 
-Default values are documented in `imageboxconfig.h`: Contain, QtSmooth, 75 ms resize debounce, bucket 1, no placeholder/error replacement, no transition, 200 ms transition duration, zero corner radius, and Keep offscreen policy. Reuse one configuration value across ImageBox instances and update it through the fluent methods when shared display settings change.
+Default values are documented in `imageboxconfig.h`: Cover, QtSmooth, 75 ms resize debounce, bucket 1, no placeholder/error replacement, CrossFade transition, FirstLoadOrNonMemoryCache transition policy, 200 ms transition duration, zero corner radius, and Keep offscreen policy. NonMemoryCache skips transitions for ActiveResource, RenderedMemory, and EncodedMemory results. FirstLoadOrNonMemoryCache still animates the first successful load of each newly created ImageBox, including memory-cache hits, while later memory hits on the same widget skip the transition. Reuse one configuration value across ImageBox instances and update it through the fluent methods when shared display settings change.
 
 Widget-based loading and error content uses a factory so a shared configuration creates an independently owned widget for every ImageBox:
 

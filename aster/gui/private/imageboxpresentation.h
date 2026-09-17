@@ -34,6 +34,7 @@ private:
     ImageBoxState state_ = ImageBoxState::Empty;
     QImage currentImage_;
     cache::ImageHandle currentHandle_;
+    bool hasAcceptedImage_ = false;
     QSize currentTarget_;
     ImageFit currentFit_ = ImageFit::Contain;
     QTimer loadingTimer_;

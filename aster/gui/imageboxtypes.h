@@ -8,6 +8,9 @@ Q_NAMESPACE
 enum class ImageTransition { None, Fade, CrossFade, Slide, Zoom, FadeZoom };
 Q_ENUM_NS(ImageTransition)
 
+enum class TransitionPolicy { Always, NonMemoryCache, FirstLoadOrNonMemoryCache };
+Q_ENUM_NS(TransitionPolicy)
+
 enum class OffscreenPolicy { Keep, ReleaseHandle, ReleaseImage };
 Q_ENUM_NS(OffscreenPolicy)
 

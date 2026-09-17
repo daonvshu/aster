@@ -126,6 +126,17 @@ ImageBoxConfig& ImageBoxConfig::transition(ImageTransition value) {
     return *this;
 }
 
+TransitionPolicy ImageBoxConfig::transitionPolicy() const {
+    return transitionPolicy_;
+}
+
+ImageBoxConfig& ImageBoxConfig::transitionPolicy(TransitionPolicy value) {
+    if (int(value) < int(TransitionPolicy::Always) || int(value) > int(TransitionPolicy::FirstLoadOrNonMemoryCache))
+        throw std::invalid_argument("Invalid transition policy");
+    transitionPolicy_ = value;
+    return *this;
+}
+
 int ImageBoxConfig::transitionDuration() const {
     return transitionDuration_;
 }

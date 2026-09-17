@@ -121,15 +121,20 @@ private Q_SLOTS:
 
     void configurationValidation() {
         QVERIFY(QMetaEnum::fromType<ImageTransition>().isValid());
+        QVERIFY(QMetaEnum::fromType<TransitionPolicy>().isValid());
         QVERIFY(QMetaEnum::fromType<OffscreenPolicy>().isValid());
         QVERIFY(QMetaEnum::fromType<ImageBoxState>().isValid());
 
         ImageBoxConfig config;
+        QCOMPARE(config.fit(), ImageFit::Cover);
+        QCOMPARE(config.transition(), ImageTransition::CrossFade);
+        QCOMPARE(config.transitionPolicy(), TransitionPolicy::FirstLoadOrNonMemoryCache);
         config.fit(ImageFit::Cover)
                 .scaleAlgorithm(ImageScaleAlgorithm::Lanczos3)
                 .resizeDebounce(100)
                 .sizeBucket(8)
                 .transition(ImageTransition::Fade)
+                .transitionPolicy(TransitionPolicy::Always)
                 .transitionDuration(300)
                 .offscreenPolicy(OffscreenPolicy::ReleaseHandle);
 
@@ -148,6 +153,12 @@ private Q_SLOTS:
         QVERIFY_EXCEPTION_THROWN(config.transition(static_cast<ImageTransition>(-1)), std::invalid_argument);
         QVERIFY_EXCEPTION_THROWN(config.transition(static_cast<ImageTransition>(int(ImageTransition::FadeZoom) + 1)), std::invalid_argument);
         QCOMPARE(config.transition(), ImageTransition::Fade);
+        QCOMPARE(config.transitionPolicy(), TransitionPolicy::Always);
+        QVERIFY_EXCEPTION_THROWN(config.transitionPolicy(static_cast<TransitionPolicy>(-1)), std::invalid_argument);
+        QVERIFY_EXCEPTION_THROWN(config.transitionPolicy(static_cast<TransitionPolicy>(int(TransitionPolicy::FirstLoadOrNonMemoryCache) + 1)),
+                                 std::invalid_argument);
+        config.transitionPolicy(TransitionPolicy::NonMemoryCache);
+        QCOMPARE(config.transitionPolicy(), TransitionPolicy::NonMemoryCache);
         QVERIFY_EXCEPTION_THROWN(config.transitionDuration(-1), std::invalid_argument);
         QVERIFY_EXCEPTION_THROWN(config.transitionDuration(60001), std::invalid_argument);
         QCOMPARE(config.transitionDuration(), 300);
@@ -173,7 +184,7 @@ private Q_SLOTS:
         box.show();
         QImage placeholder(box.size(), QImage::Format_RGB32);
         placeholder.fill(Qt::yellow);
-        box.setConfig(ImageBoxConfig().fit(ImageFit::Fill).placeholder(placeholder).build());
+        box.setConfig(ImageBoxConfig().fit(ImageFit::Fill).placeholder(placeholder).transition(ImageTransition::None).build());
         QVERIFY(!box.config().placeholder().isNull());
         QCOMPARE(box.config().placeholder().pixelColor(0, 0), QColor(Qt::yellow));
         const auto render = [&] {
@@ -502,6 +513,51 @@ private Q_SLOTS:
         QCOMPARE(destroyed.count(), 1);
     }
 
+    void transitionPolicies() {
+        QWidget owner;
+        owner.resize(8, 8);
+        owner.show();
+        ImageBoxConfig config =
+                ImageBoxConfig().transition(ImageTransition::Fade).transitionPolicy(TransitionPolicy::NonMemoryCache).transitionDuration(1000).build();
+        detail::ImageBoxPresentation presentation(owner, config);
+        const auto accept = [&](CacheResultSource source) {
+            QImage image(8, 8, QImage::Format_RGB32);
+            image.fill(Qt::red);
+            presentation.accept(ImageResult::success(image, source), image.size(), ImageFit::Fill, 1);
+        };
+
+        QCOMPARE(config.transitionPolicy(), TransitionPolicy::NonMemoryCache);
+        for (auto source : {CacheResultSource::ActiveResource, CacheResultSource::RenderedMemory, CacheResultSource::EncodedMemory}) {
+            accept(source);
+            QVERIFY(!presentation.isTransitionRunning());
+        }
+        accept(CacheResultSource::RenderedDisk);
+        QVERIFY(presentation.isTransitionRunning());
+        presentation.finishTransition();
+        accept(CacheResultSource::Network);
+        QVERIFY(presentation.isTransitionRunning());
+        presentation.finishTransition();
+
+        config.transitionPolicy(TransitionPolicy::Always);
+        accept(CacheResultSource::RenderedMemory);
+        QVERIFY(presentation.isTransitionRunning());
+        presentation.finishTransition();
+
+        config.transitionPolicy(TransitionPolicy::FirstLoadOrNonMemoryCache);
+        detail::ImageBoxPresentation firstLoadPresentation(owner, config);
+        QImage memoryImage(8, 8, QImage::Format_RGB32);
+        memoryImage.fill(Qt::red);
+        firstLoadPresentation.accept(ImageResult::success(memoryImage, CacheResultSource::RenderedMemory), memoryImage.size(), ImageFit::Fill, 1);
+        QVERIFY(firstLoadPresentation.isTransitionRunning());
+        firstLoadPresentation.finishTransition();
+        firstLoadPresentation.accept(ImageResult::success(memoryImage, CacheResultSource::RenderedMemory), memoryImage.size(), ImageFit::Fill, 1);
+        QVERIFY(!firstLoadPresentation.isTransitionRunning());
+
+        config.transition(ImageTransition::None);
+        accept(CacheResultSource::Network);
+        QVERIFY(!presentation.isTransitionRunning());
+    }
+
     void presentationAndTransitions() {
         ControlledPipeline fixture;
         QWidget host;
@@ -512,7 +568,7 @@ private Q_SLOTS:
         placeholder.fill(Qt::yellow);
         QImage error(8, 8, QImage::Format_RGB32);
         error.fill(Qt::green);
-        box.setConfig(ImageBoxConfig().placeholder(placeholder).errorImage(error).build());
+        box.setConfig(ImageBoxConfig().placeholder(placeholder).errorImage(error).transition(ImageTransition::None).build());
         host.show();
         box.show();
         auto pixel = [&] {
@@ -537,7 +593,7 @@ private Q_SLOTS:
         flushDeletes();
         QCOMPARE(fixture.active->stats().entries, qint64(1));
 
-        box.setConfig(box.config().transition(ImageTransition::CrossFade).transitionDuration(1000).build());
+        box.setConfig(box.config().transition(ImageTransition::CrossFade).transitionPolicy(TransitionPolicy::Always).transitionDuration(1000).build());
         box.setSource("https://example.test/b");
         QVERIFY(!box.isLoadingIndicatorActive());
         box.setConfig(box.config().loadingOverlay().build());
@@ -599,7 +655,8 @@ private Q_SLOTS:
         auto* transient = new ImageBox;
         transient->resize(8, 8);
         transient->setPipeline(fixture.pipeline);
-        transient->setConfig(ImageBoxConfig().transition(ImageTransition::CrossFade).transitionDuration(1000).build());
+        transient->setConfig(
+                ImageBoxConfig().transition(ImageTransition::CrossFade).transitionPolicy(TransitionPolicy::Always).transitionDuration(1000).build());
         transient->show();
         transient->setSource("https://example.test/a");
         QTRY_COMPARE(transient->state(), ImageBoxState::Ready);
@@ -622,6 +679,7 @@ private Q_SLOTS:
                                     .sizeBucket(8)
                                     .cornerRadius(6)
                                     .transition(ImageTransition::Fade)
+                                    .transitionPolicy(TransitionPolicy::Always)
                                     .transitionDuration(300)
                                     .offscreenPolicy(OffscreenPolicy::ReleaseImage)
                                     .build());
@@ -631,6 +689,7 @@ private Q_SLOTS:
         QCOMPARE(configBox.config().sizeBucket(), 8);
         QCOMPARE(configBox.config().cornerRadius(), qreal(6));
         QCOMPARE(configBox.config().transition(), ImageTransition::Fade);
+        QCOMPARE(configBox.config().transitionPolicy(), TransitionPolicy::Always);
         QCOMPARE(configBox.config().transitionDuration(), 300);
         QCOMPARE(configBox.config().offscreenPolicy(), OffscreenPolicy::ReleaseImage);
 

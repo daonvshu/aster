@@ -19,13 +19,13 @@ public:
     using LoadingErrorWidgetFactory = std::function<QWidget*(QWidget*)>;
 
     /**
-     * @brief Returns the fit mode. The default is Contain.
+     * @brief Returns the fit mode. The default is Cover.
      * @return Fit mode.
      */
     cache::ImageFit fit() const;
 
     /**
-     * @brief Sets the fit mode. The default is Contain.
+     * @brief Sets the fit mode. The default is Cover.
      * @param value Fit mode.
      */
     ImageBoxConfig& fit(cache::ImageFit value);
@@ -151,16 +151,28 @@ public:
     ImageBoxConfig& loadingErrorImage(const QImage& image);
 
     /**
-     * @brief Returns the transition type. The default is None.
+     * @brief Returns the transition type. The default is CrossFade.
      * @return Transition type.
      */
     ImageTransition transition() const;
 
     /**
-     * @brief Sets the transition type. The default is None.
+     * @brief Sets the transition type. The default is CrossFade.
      * @param value Transition type.
      */
     ImageBoxConfig& transition(ImageTransition value);
+
+    /**
+     * @brief Returns the transition trigger policy. The default is FirstLoadOrNonMemoryCache.
+     * @return Transition policy.
+     */
+    TransitionPolicy transitionPolicy() const;
+
+    /**
+     * @brief Sets the transition trigger policy. The default is FirstLoadOrNonMemoryCache.
+     * @param value Transition policy.
+     */
+    ImageBoxConfig& transitionPolicy(TransitionPolicy value);
 
     /**
      * @brief Returns transition duration. The default is 200 ms.
@@ -206,7 +218,7 @@ public:
 
 private:
     friend class ImageBox;
-    cache::ImageFit fit_ = cache::ImageFit::Contain;
+    cache::ImageFit fit_ = cache::ImageFit::Cover;
     cache::ImageScaleAlgorithm scaleAlgorithm_ = cache::ImageScaleAlgorithm::QtSmooth;
     int resizeDebounce_ = 75;
     int sizeBucket_ = 1;
@@ -217,7 +229,8 @@ private:
     bool loadingOverlay_ = false;
     QSharedPointer<LoadingErrorWidgetFactory> loadingErrorWidgetFactory_;
     QImage loadingErrorImage_;
-    ImageTransition transition_ = ImageTransition::None;
+    ImageTransition transition_ = ImageTransition::CrossFade;
+    TransitionPolicy transitionPolicy_ = TransitionPolicy::FirstLoadOrNonMemoryCache;
     int transitionDuration_ = 200;
     qreal cornerRadius_ = 0;
     OffscreenPolicy offscreenPolicy_ = OffscreenPolicy::Keep;

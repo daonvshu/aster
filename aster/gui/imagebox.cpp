@@ -44,7 +44,8 @@ void ImageBox::setConfig(const ImageBoxConfig& config) {
     Q_ASSERT(QThread::currentThread() == thread());
     const bool requestChanged = config_.fit_ != config.fit_ || config_.scaleAlgorithm_ != config.scaleAlgorithm_ || config_.sizeBucket_ != config.sizeBucket_;
     const bool offscreenPolicyChanged = config_.offscreenPolicy_ != config.offscreenPolicy_;
-    const bool transitionChanged = config_.transition_ != config.transition_ || config_.transitionDuration_ != config.transitionDuration_;
+    const bool transitionChanged = config_.transition_ != config.transition_ || config_.transitionPolicy_ != config.transitionPolicy_ ||
+            config_.transitionDuration_ != config.transitionDuration_;
     const bool widgetFactoryChanged = config_.loadingErrorWidgetFactory_ != config.loadingErrorWidgetFactory_;
     QWidget* replacement = nullptr;
     if (widgetFactoryChanged)

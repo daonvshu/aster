@@ -1,4 +1,5 @@
 #include "imagegrid.h"
+#include "smoothscrollbar.h"
 
 #include <QFileInfo>
 #include <QLabel>
@@ -35,10 +36,12 @@ ImageGrid::ImageGrid(QSharedPointer<cache::ImagePipeline> pipeline, QWidget* par
     config_.offscreenPolicy(gui::OffscreenPolicy::ReleaseImage)
             .transitionDuration(220)
             .loadingIndicator()
+            .cornerRadius(6)
             .placeholder(statusImage(tr("加载中"), QColor("#222c3b")))
             .errorImage(statusImage(tr("加载失败"), QColor("#3c2830")))
             .errorReplacesImage();
     setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+    setVerticalScrollBar(new SmoothScrollbar);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setFrameShape(QFrame::NoFrame);
     setMinimumWidth(650);
@@ -86,6 +89,18 @@ void ImageGrid::setTransition(gui::ImageTransition transition) {
         card.image->setConfig(config_);
 }
 
+void ImageGrid::setTransitionPolicy(gui::TransitionPolicy policy) {
+    config_.transitionPolicy(policy);
+    for (const auto& card : cards_)
+        card.image->setConfig(config_);
+}
+
+void ImageGrid::setOffscreenPolicy(gui::OffscreenPolicy policy) {
+    config_.offscreenPolicy(policy);
+    for (const auto& card : cards_)
+        card.image->setConfig(config_);
+}
+
 void ImageGrid::refresh() {
     for (const auto& card : cards_)
         card.image->reload();
@@ -126,8 +141,11 @@ void ImageGrid::updateItems() {
         verticalScrollBar()->setSingleStep(std::max(20, rowHeight / 4));
     }
     const int offset = verticalScrollBar()->value();
-    const int first = (offset / rowHeight) * columns;
-    const int last = int(std::min<qint64>(files_.size(), (qint64(offset) + viewport()->height()) / rowHeight * columns + columns));
+    const qint64 viewportHeight = viewport()->height();
+    const qint64 bufferedTop = std::max<qint64>(0, qint64(offset) - viewportHeight);
+    const qint64 bufferedBottom = std::min<qint64>(totalHeight, qint64(offset) + viewportHeight * 2);
+    const int first = int(bufferedTop / rowHeight * columns);
+    const int last = int(std::min<qint64>(files_.size(), (bufferedBottom + rowHeight - 1) / rowHeight * columns));
     for (auto it = cards_.begin(); it != cards_.end();) {
         if (it.key() < first || it.key() >= last) {
             delete it->widget;

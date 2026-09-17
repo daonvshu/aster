@@ -72,8 +72,22 @@ GalleryWindow::GalleryWindow(QSharedPointer<cache::ImagePipeline> pipeline, QWid
     fit->addItem(tr("拉伸 · Fill"), int(gui::ImageFit::Fill));
     fit->addItem(tr("仅缩小 · ScaleDown"), int(gui::ImageFit::ScaleDown));
     fit->addItem(tr("原始大小 · None"), int(gui::ImageFit::None));
+    fit->setCurrentIndex(fit->findData(int(gui::ImageFit::Cover)));
     auto* transition = new QComboBox(this);
     transition->addItems({"None", "Fade", "CrossFade", "Slide", "Zoom", "FadeZoom"});
+    transition->setCurrentIndex(int(gui::ImageTransition::CrossFade));
+    auto* transitionPolicy = new QComboBox(this);
+    transitionPolicy->setObjectName("transitionPolicy");
+    transitionPolicy->addItem(tr("内存命中不动画 · NonMemoryCache"), int(gui::TransitionPolicy::NonMemoryCache));
+    transitionPolicy->addItem(tr("新控件首次加载动画 · FirstLoadOrNonMemoryCache"), int(gui::TransitionPolicy::FirstLoadOrNonMemoryCache));
+    transitionPolicy->addItem(tr("全部来源 · Always"), int(gui::TransitionPolicy::Always));
+    transitionPolicy->setCurrentIndex(transitionPolicy->findData(int(gui::TransitionPolicy::FirstLoadOrNonMemoryCache)));
+    auto* offscreenPolicy = new QComboBox(this);
+    offscreenPolicy->setObjectName("offscreenPolicy");
+    offscreenPolicy->addItem("Keep", int(gui::OffscreenPolicy::Keep));
+    offscreenPolicy->addItem("ReleaseHandle", int(gui::OffscreenPolicy::ReleaseHandle));
+    offscreenPolicy->addItem("ReleaseImage", int(gui::OffscreenPolicy::ReleaseImage));
+    offscreenPolicy->setCurrentIndex(offscreenPolicy->findData(int(gui::OffscreenPolicy::ReleaseImage)));
     auto* refresh = new QPushButton(tr("重新加载当前图片"), this);
     options->addWidget(new QLabel(tr("缩放算法"), this));
     options->addWidget(algorithm);
@@ -83,6 +97,12 @@ GalleryWindow::GalleryWindow(QSharedPointer<cache::ImagePipeline> pipeline, QWid
     options->addSpacing(12);
     options->addWidget(new QLabel(tr("过渡动画"), this));
     options->addWidget(transition);
+    options->addSpacing(12);
+    options->addWidget(new QLabel(tr("动画策略"), this));
+    options->addWidget(transitionPolicy);
+    options->addSpacing(12);
+    options->addWidget(new QLabel(tr("离屏策略"), this));
+    options->addWidget(offscreenPolicy);
     options->addStretch();
     options->addWidget(refresh);
     layout->addLayout(options);
@@ -103,6 +123,10 @@ GalleryWindow::GalleryWindow(QSharedPointer<cache::ImagePipeline> pipeline, QWid
     connect(fit, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             [this, fit](int index) { grid_->setFit(gui::ImageFit(fit->itemData(index).toInt())); });
     connect(transition, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) { grid_->setTransition(gui::ImageTransition(index)); });
+    connect(transitionPolicy, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this, transitionPolicy](int index) { grid_->setTransitionPolicy(gui::TransitionPolicy(transitionPolicy->itemData(index).toInt())); });
+    connect(offscreenPolicy, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this, offscreenPolicy](int index) { grid_->setOffscreenPolicy(gui::OffscreenPolicy(offscreenPolicy->itemData(index).toInt())); });
     connect(refresh, &QPushButton::clicked, grid_, &ImageGrid::refresh);
     connect(catalog_, &ImageCatalog::started, this, [this] { message_->setText(tr("正在扫描文件夹… 可以随时选择其他文件夹。")); });
     connect(catalog_, &ImageCatalog::failed, message_, &QLabel::setText);

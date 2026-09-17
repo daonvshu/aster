@@ -5,6 +5,7 @@ add_library(aster_gallery_ui STATIC
     imagegrid.cpp imagegrid.h
     gallerywindow.cpp gallerywindow.h
     httptestpanel.cpp httptestpanel.h
+    smoothscrollbar.cpp smoothscrollbar.h
 )
 set_target_properties(aster_gallery_ui PROPERTIES AUTOMOC ON)
 target_link_libraries(aster_gallery_ui PUBLIC aster::gui Qt${QT_VERSION_MAJOR}::Concurrent)

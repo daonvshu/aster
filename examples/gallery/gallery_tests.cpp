@@ -83,6 +83,22 @@ private Q_SLOTS:
         auto* grid = window.findChild<gallery::ImageGrid*>();
         QVERIFY(grid);
         QTRY_COMPARE(grid->imageCount(), 24);
+        auto* offscreenPolicy = window.findChild<QComboBox*>("offscreenPolicy");
+        QVERIFY(offscreenPolicy);
+        QCOMPARE(offscreenPolicy->currentData().toInt(), int(gui::OffscreenPolicy::ReleaseImage));
+        offscreenPolicy->setCurrentIndex(offscreenPolicy->findData(int(gui::OffscreenPolicy::Keep)));
+        auto* transitionPolicy = window.findChild<QComboBox*>("transitionPolicy");
+        QVERIFY(transitionPolicy);
+        QCOMPARE(transitionPolicy->currentData().toInt(), int(gui::TransitionPolicy::FirstLoadOrNonMemoryCache));
+        for (auto* box : grid->findChildren<gui::ImageBox*>()) {
+            QCOMPARE(box->config().fit(), gui::ImageFit::Cover);
+            QCOMPARE(box->config().transition(), gui::ImageTransition::CrossFade);
+        }
+        transitionPolicy->setCurrentIndex(transitionPolicy->findData(int(gui::TransitionPolicy::Always)));
+        for (auto* box : grid->findChildren<gui::ImageBox*>())
+            QCOMPARE(box->config().offscreenPolicy(), gui::OffscreenPolicy::Keep);
+        for (auto* box : grid->findChildren<gui::ImageBox*>())
+            QCOMPARE(box->config().transitionPolicy(), gui::TransitionPolicy::Always);
         auto ready = [&window] {
             for (auto* box : window.findChildren<gui::ImageBox*>())
                 if (box->state() != gui::ImageBoxState::Ready)
@@ -149,8 +165,8 @@ private Q_SLOTS:
             files.push_back(path);
         grid.setFiles(files);
         QCOMPARE(grid.imageCount(), 1200);
-        QVERIFY(grid.visibleItemCount() >= 6);
-        QVERIFY(grid.visibleItemCount() < 40);
+        QVERIFY(grid.visibleItemCount() >= 12);
+        QVERIFY(grid.visibleItemCount() < 80);
         auto boxes = grid.findChildren<gui::ImageBox*>();
         auto allReady = [&grid] {
             for (auto* box : grid.findChildren<gui::ImageBox*>())
@@ -164,10 +180,17 @@ private Q_SLOTS:
             columns.insert(box->parentWidget()->x());
         QCOMPARE(columns.size(), 6);
         QPointer<gui::ImageBox> old = boxes.first();
-        grid.verticalScrollBar()->setValue(grid.verticalScrollBar()->maximum());
+        const int pageStep = grid.verticalScrollBar()->pageStep();
+        grid.verticalScrollBar()->setValue(pageStep);
+        QVERIFY(!old.isNull());
+        QTRY_VERIFY(allReady());
+        QVERIFY(grid.visibleItemCount() < 80);
+        grid.verticalScrollBar()->setValue(pageStep * 2);
         QVERIFY(old.isNull());
         QTRY_VERIFY(allReady());
-        QVERIFY(grid.visibleItemCount() < 40);
+        grid.verticalScrollBar()->setValue(grid.verticalScrollBar()->maximum());
+        QTRY_VERIFY(allReady());
+        QVERIFY(grid.visibleItemCount() < 80);
         grid.setAlgorithm(gui::ImageScaleAlgorithm::Lanczos4);
         grid.setFit(gui::ImageFit::Cover);
         QTRY_VERIFY(allReady());
