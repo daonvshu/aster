@@ -9,6 +9,7 @@ add_library(aster_cache STATIC
     cache/filediskcache.cpp
     cache/rendereddiskcache.cpp
     pipeline/activeresourcestore.cpp
+    pipeline/pipelineinterceptor.cpp
     source/cachedsourceloader.cpp
     source/httpinterceptor.cpp
     source/imagesource.cpp

@@ -7,6 +7,7 @@
 #include "aster/cache/source/sourcetask.h"
 #include "imagesubscription.h"
 #include "inflightregistry.h"
+#include "pipelineinterceptor.h"
 #include "sourcerequest.h"
 
 #include <QSharedPointer>
@@ -49,7 +50,8 @@ public:
     using Completion = std::function<void(ImageResult)>;
 
     ImagePipeline(QSharedPointer<IImageMemoryCache>, SourceTask, Renderer, EventSink = {});
-    ImagePipeline(QSharedPointer<IImageMemoryCache>, QSharedPointer<IImageSourceLoader>, Renderer, int workerCount = 4, EventSink = {}, PipelineResources = {});
+    ImagePipeline(QSharedPointer<IImageMemoryCache>, QSharedPointer<IImageSourceLoader>, Renderer, int workerCount = 4, EventSink = {}, PipelineResources = {},
+                  QList<QSharedPointer<IPipelineInterceptor>> interceptors = {});
     ~ImagePipeline();
 
     ImagePipeline(const ImagePipeline&) = delete;
@@ -71,8 +73,17 @@ public:
     bool clearNamespace(const QByteArray& nameSpace);
 
 private:
-    bool invalidate(const CacheSelector&, bool includeSource);
     struct State;
+
+    /**
+     * @brief Executes a source request after pipeline interception.
+     * @param state Shared pipeline state.
+     * @param request Source request to execute.
+     * @param completion Final result callback.
+     * @return Subscription that cancels the request.
+     */
+    static Subscription requestSource(const QSharedPointer<State>& state, const SourceRequest& request, Completion completion);
+    bool invalidate(const CacheSelector&, bool includeSource);
     QSharedPointer<State> state_;
 };
 } // namespace aster::cache

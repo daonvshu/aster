@@ -123,7 +123,29 @@ config.addInterceptor(aster::cache::SourceInterceptor::create(
 
 Source 拦截器按注册顺序运行，可以短路返回或重试后续链。它可能被并发调用，并且必须响应取消标记；配置的字节上限会在拦截完成后再次检查。编码内存缓存和源磁盘缓存保留原始字节，转换后字节的哈希会进入渲染缓存键，因此命中源缓存时仍会执行拦截器，不同转换内容的渲染缓存也会保持隔离。
 
-`ImageServiceConfig::addInterceptor(...)` 针对 HTTP 和 Source 拦截器指针类型提供重载，因此两类拦截器使用同一个链式配置函数。
+### Pipeline 拦截器
+
+`PipelineInterceptor` 包围包含请求合并、源加载、解码、渲染和缓存查找在内的完整请求。它可以在生成缓存键之前修改请求、观察最终 `ImageResult`，也可以短路整个 Pipeline：
+
+```cpp
+config.addInterceptor(aster::cache::PipelineInterceptor::create(
+    [](aster::cache::PipelineInterceptorChain chain,
+       aster::cache::SourceRequest request,
+       aster::cache::PipelineCompletion completion) {
+        const auto started = std::chrono::steady_clock::now();
+        return chain.proceed(
+            std::move(request),
+            [started, completion = std::move(completion)](
+                aster::cache::ImageResult result) mutable {
+                recordLoadTime(std::chrono::steady_clock::now() - started);
+                completion(std::move(result));
+            });
+    }));
+```
+
+每个 `SourceRequest` 和字符串来源请求都会执行 Pipeline 拦截器，包括最终结果来自内存或磁盘缓存的请求；旧的预计算键 `ImageRequest` 重载保持原有直接执行行为。拦截器链按值传递，可以保留后用于异步重试或备用源；`proceed()` 返回的 `Subscription` 必须直接返回或自行持有，销毁它会取消下游任务。`waitForIdle()` 只跟踪 `proceed()` 启动后的 Pipeline 工作，拦截器自己延迟调度的任务需要自行管理。
+
+`ImageServiceConfig::addInterceptor(...)` 针对 HTTP、Source 和 Pipeline 三种拦截器指针类型提供重载，因此它们使用同一个链式配置函数。
 
 不同页面需要不同拦截器链时，可以分别创建独立 Pipeline：
 
@@ -131,10 +153,12 @@ Source 拦截器按注册顺序运行，可以短路返回或重试后续链。�
 auto pageAConfig = baseConfig;
 pageAConfig.addInterceptor(aster::cache::HttpInterceptor::create(pageAHandler));
 pageAConfig.addInterceptor(aster::cache::SourceInterceptor::create(pageASourceHandler));
+pageAConfig.addInterceptor(aster::cache::PipelineInterceptor::create(pageAPipelineHandler));
 
 auto pageBConfig = baseConfig;
 pageBConfig.addInterceptor(aster::cache::HttpInterceptor::create(pageBHandler));
 pageBConfig.addInterceptor(aster::cache::SourceInterceptor::create(pageBSourceHandler));
+pageBConfig.addInterceptor(aster::cache::PipelineInterceptor::create(pageBPipelineHandler));
 
 auto pageAPipeline = aster::cache::ImageService::createPipeline(pageAConfig);
 auto pageBPipeline = aster::cache::ImageService::createPipeline(pageBConfig);

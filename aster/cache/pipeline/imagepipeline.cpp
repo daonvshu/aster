@@ -9,6 +9,7 @@
 #include <QThread>
 #include <QThreadPool>
 
+#include <atomic>
 #include <stdexcept>
 #include <thread>
 
@@ -62,8 +63,10 @@ struct ImagePipeline::State {
     QSharedPointer<IImageSourceLoader> loader;
     QSharedPointer<QThreadPool> workers;
     PipelineResources resources;
+    QList<QSharedPointer<IPipelineInterceptor>> interceptors;
     InFlightRegistry<QByteArray, SourcePayload> payloads;
     InFlightRegistry<QByteArray, QImage> loadedRenders;
+    std::atomic<bool> accepting{true};
 
     void event(PipelineEvent::Kind kind, const QByteArray& digest, ImageError error = ImageError::None,
                CacheResultSource origin = CacheResultSource::Unknown) const noexcept {
@@ -87,6 +90,7 @@ ImagePipeline::ImagePipeline(QSharedPointer<IImageMemoryCache> cache, SourceTask
 }
 
 ImagePipeline::~ImagePipeline() {
+    state_->accepting.store(false);
     state_->loadedRenders.shutdown();
     state_->payloads.shutdown();
     state_->renders.shutdown();
@@ -196,7 +200,7 @@ PipelineStats ImagePipeline::stats() const {
 }
 
 ImagePipeline::ImagePipeline(QSharedPointer<IImageMemoryCache> cache, QSharedPointer<IImageSourceLoader> loader, Renderer renderer, int workerCount,
-                             EventSink sink, PipelineResources resources)
+                             EventSink sink, PipelineResources resources, QList<QSharedPointer<IPipelineInterceptor>> interceptors)
     : state_(QSharedPointer<State>::create()) {
     if (!cache || !loader || !renderer || workerCount <= 0)
         throw std::invalid_argument("Invalid pipeline dependencies");
@@ -204,6 +208,10 @@ ImagePipeline::ImagePipeline(QSharedPointer<IImageMemoryCache> cache, QSharedPoi
     state_->cache = std::move(cache);
     state_->loader = std::move(loader);
     state_->resources = std::move(resources);
+    state_->interceptors = std::move(interceptors);
+    for (const auto& interceptor : state_->interceptors)
+        if (!interceptor)
+            throw std::invalid_argument("Pipeline interceptor must not be null");
     state_->renderer = std::move(renderer);
     state_->sink = std::move(sink);
     state_->workers = QSharedPointer<QThreadPool>::create();
@@ -211,12 +219,25 @@ ImagePipeline::ImagePipeline(QSharedPointer<IImageMemoryCache> cache, QSharedPoi
 }
 
 Subscription ImagePipeline::request(const SourceRequest& input, Completion callback) {
+    const auto state = state_;
+    if (state->interceptors.isEmpty())
+        return requestSource(state, input, std::move(callback));
+
+    return PipelineInterceptorChain::start(
+            state->interceptors, [state](SourceRequest request, PipelineCompletion completion) { return requestSource(state, request, std::move(completion)); },
+            input, std::move(callback));
+}
+
+Subscription ImagePipeline::requestSource(const QSharedPointer<State>& state, const SourceRequest& input, Completion callback) {
     auto request = input;
     request.load.enableSourceDisk = input.load.enableSourceDisk &&
             (input.diskStrategy == DiskCacheStrategy::SourceOnly || input.diskStrategy == DiskCacheStrategy::All ||
              (input.diskStrategy == DiskCacheStrategy::Automatic && input.source.kind == ImageSource::Kind::Network));
-    const auto state = state_;
     const auto pool = state->workers;
+    if (!state->accepting.load() || !pool) {
+        deliver(callback, ImageResult::failure(ImageError::Cancelled));
+        return {};
+    }
     if (!state->loader) {
         deliver(callback, ImageResult::failure(ImageError::InvalidRequest));
         return {};

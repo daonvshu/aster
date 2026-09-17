@@ -123,7 +123,29 @@ config.addInterceptor(aster::cache::SourceInterceptor::create(
 
 Source interceptors run in registration order and may short-circuit or retry the remaining chain. They may execute concurrently and must honor cancellation. The configured byte limit is checked again after interception. Encoded memory and source disk caches retain the original bytes; transformed bytes are hashed into the rendered cache key, so source-cache hits are intercepted again while rendered entries remain separated by transformed content.
 
-`ImageServiceConfig::addInterceptor(...)` is overloaded for HTTP and source interceptor pointer types, so both kinds use the same fluent configuration method.
+### Pipeline Interceptors
+
+`PipelineInterceptor` wraps the complete request, including request merging, source loading, decoding, rendering, and cache lookup. It can modify a request before cache keys are generated, observe the final `ImageResult`, or short-circuit the pipeline:
+
+```cpp
+config.addInterceptor(aster::cache::PipelineInterceptor::create(
+    [](aster::cache::PipelineInterceptorChain chain,
+       aster::cache::SourceRequest request,
+       aster::cache::PipelineCompletion completion) {
+        const auto started = std::chrono::steady_clock::now();
+        return chain.proceed(
+            std::move(request),
+            [started, completion = std::move(completion)](
+                aster::cache::ImageResult result) mutable {
+                recordLoadTime(std::chrono::steady_clock::now() - started);
+                completion(std::move(result));
+            });
+    }));
+```
+
+Pipeline interceptors run for every `SourceRequest` and string-source request, including requests whose final result comes from memory or disk cache. The legacy pre-keyed `ImageRequest` overload keeps its existing direct behavior. The chain is passed by value and can be retained for asynchronous retry or fallback. The `Subscription` returned by `proceed()` must be returned or retained; destroying it cancels downstream work. `waitForIdle()` tracks pipeline work after `proceed()` starts it, while interceptor-owned delayed scheduling remains the interceptor's responsibility.
+
+`ImageServiceConfig::addInterceptor(...)` is overloaded for HTTP, source, and pipeline interceptor pointer types, so all three kinds use the same fluent configuration method.
 
 Different pages can create independent pipelines when they require different interceptor chains:
 
@@ -131,10 +153,12 @@ Different pages can create independent pipelines when they require different int
 auto pageAConfig = baseConfig;
 pageAConfig.addInterceptor(aster::cache::HttpInterceptor::create(pageAHandler));
 pageAConfig.addInterceptor(aster::cache::SourceInterceptor::create(pageASourceHandler));
+pageAConfig.addInterceptor(aster::cache::PipelineInterceptor::create(pageAPipelineHandler));
 
 auto pageBConfig = baseConfig;
 pageBConfig.addInterceptor(aster::cache::HttpInterceptor::create(pageBHandler));
 pageBConfig.addInterceptor(aster::cache::SourceInterceptor::create(pageBSourceHandler));
+pageBConfig.addInterceptor(aster::cache::PipelineInterceptor::create(pageBPipelineHandler));
 
 auto pageAPipeline = aster::cache::ImageService::createPipeline(pageAConfig);
 auto pageBPipeline = aster::cache::ImageService::createPipeline(pageBConfig);

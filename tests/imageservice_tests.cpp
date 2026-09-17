@@ -231,6 +231,86 @@ void sourceInterceptorTests() {
     }
 }
 
+void pipelineInterceptorTests() {
+    auto events = QSharedPointer<QStringList>::create();
+    auto renders = QSharedPointer<std::atomic<int>>::create(0);
+    auto first = PipelineInterceptor::create([events](PipelineInterceptorChain chain, SourceRequest request, PipelineCompletion completion) {
+        events->push_back("first-before");
+        return chain.proceed(std::move(request), [events, completion = std::move(completion)](ImageResult result) mutable {
+            events->push_back("first-after");
+            completion(std::move(result));
+        });
+    });
+    auto second = PipelineInterceptor::create([events](PipelineInterceptorChain chain, SourceRequest request, PipelineCompletion completion) {
+        events->push_back("second-before");
+        request.source.data = "pipeline-intercepted";
+        request.render.physicalTargetSize = QSize(7, 9);
+        return chain.proceed(std::move(request), [events, completion = std::move(completion)](ImageResult result) mutable {
+            events->push_back("second-after");
+            completion(std::move(result));
+        });
+    });
+
+    ImageServiceConfig config;
+    config.renderedMemoryBytes = 65536;
+    config.renderer = [renders](const QByteArray& bytes, const auto& options, const auto&) {
+        ++*renders;
+        QImage image(options.physicalTargetSize, QImage::Format_ARGB32);
+        image.fill(bytes == "pipeline-intercepted" ? Qt::red : Qt::blue);
+        return ImageResult::success(image);
+    };
+    config.addInterceptor(first).addInterceptor(second);
+    auto pipeline = ImageService::createPipeline(config);
+
+    auto result = load(pipeline);
+    require(result && result.value->size() == QSize(7, 9) && result.value->pixelColor(0, 0) == QColor(Qt::red),
+            "Pipeline interceptor did not modify the complete request");
+    require(events->join('|') == "first-before|second-before|second-after|first-after", "Pipeline interceptor order is incorrect");
+
+    result = load(pipeline);
+    require(result && result.source == CacheResultSource::RenderedMemory, "Second pipeline request did not use rendered memory");
+    require(renders->load() == 1, "Rendered memory hit unexpectedly invoked the renderer");
+    require(events->size() == 8, "Rendered memory hit bypassed pipeline interceptors");
+
+    auto shortCircuit = PipelineInterceptor::create([](PipelineInterceptorChain, SourceRequest, PipelineCompletion completion) {
+        QImage image(3, 4, QImage::Format_ARGB32);
+        image.fill(Qt::yellow);
+        completion(ImageResult::success(std::move(image)));
+        return Subscription{};
+    });
+    auto shortConfig = config;
+    shortConfig.pipelineInterceptors.clear();
+    shortConfig.addInterceptor(shortCircuit);
+    auto shortPipeline = ImageService::createPipeline(shortConfig);
+    result = load(shortPipeline);
+    require(result && result.value->size() == QSize(3, 4) && result.value->pixelColor(0, 0) == QColor(Qt::yellow),
+            "Pipeline interceptor did not short-circuit the request");
+    require(renders->load() == 1, "Short-circuited pipeline request reached the renderer");
+
+    auto throwing = PipelineInterceptor::create(
+            [](PipelineInterceptorChain, SourceRequest, PipelineCompletion) -> Subscription { throw std::runtime_error("pipeline interceptor failure"); });
+    auto throwingConfig = config;
+    throwingConfig.pipelineInterceptors.clear();
+    throwingConfig.addInterceptor(throwing);
+    auto throwingPipeline = ImageService::createPipeline(throwingConfig);
+    result = load(throwingPipeline);
+    require(!result && result.error == ImageError::ProcessingError, "Pipeline interceptor exception was not converted to a failure");
+
+    ImageServiceConfig fluent;
+    require(&fluent.addInterceptor(first).addInterceptor(second) == &fluent);
+    require(fluent.pipelineInterceptors.size() == 2);
+    try {
+        fluent.addInterceptor(QSharedPointer<IPipelineInterceptor>{});
+        require(false);
+    } catch (const std::invalid_argument&) {
+    }
+    try {
+        PipelineInterceptor::create({});
+        require(false);
+    } catch (const std::invalid_argument&) {
+    }
+}
+
 void independentPipelineTests() {
     ImageServiceConfig base;
     base.renderer = [](const QByteArray& bytes, const auto& options, const auto&) {
@@ -284,6 +364,7 @@ void independentPipelineTests() {
 void imageServiceTests() {
     httpInterceptorTests();
     sourceInterceptorTests();
+    pipelineInterceptorTests();
     independentPipelineTests();
     require(!ImageService::isConfigured());
     bool rejected = false;

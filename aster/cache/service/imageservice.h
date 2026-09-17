@@ -1,6 +1,7 @@
 #pragma once
 
 #include "aster/cache/pipeline/imagepipeline.h"
+#include "aster/cache/pipeline/pipelineinterceptor.h"
 #include "aster/cache/source/cachedsourceloader.h"
 #include "aster/cache/source/httpinterceptor.h"
 #include "aster/cache/source/sourceinterceptor.h"
@@ -23,6 +24,7 @@ struct ImageServiceConfig {
     QSharedPointer<INetworkService> network;
     QList<QSharedPointer<IHttpInterceptor>> httpInterceptors;
     QList<QSharedPointer<ISourceInterceptor>> sourceInterceptors;
+    QList<QSharedPointer<IPipelineInterceptor>> pipelineInterceptors;
     QSharedPointer<IDiskCache> sourceDisk;
     QSharedPointer<RenderedDiskCache> renderedDisk;
     QSharedPointer<IImageSourceLoader> sourceLoader;
@@ -40,6 +42,13 @@ struct ImageServiceConfig {
      * @return This configuration for chained calls.
      */
     ImageServiceConfig& addInterceptor(QSharedPointer<ISourceInterceptor> interceptor);
+
+    /**
+     * @brief Adds a complete-pipeline interceptor. Interceptors run outside request merging and caches.
+     * @param interceptor Interceptor to add. It must not be null.
+     * @return This configuration for chained calls.
+     */
+    ImageServiceConfig& addInterceptor(QSharedPointer<IPipelineInterceptor> interceptor);
 };
 
 class ImageService final {
