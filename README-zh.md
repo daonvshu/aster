@@ -23,11 +23,11 @@ aster 是一个基于 C++17、Qt 5/6 和 CMake 的异步图片加载与缓存框
                  |
            aster::cache
         +--------+--------+
- SourceLoader Pipeline Renderer
-      |          |         |
- 文件/网络    合并/取消   解码/缩放
-      |          |         |
- 编码缓存      渲染缓存     磁盘缓存
+ SourceLoader Pipeline    Renderer
+      |          |           |
+ 文件/网络    合并/取消    Decoder 链
+      |          |        缩放/图片转换
+ 编码缓存      渲染缓存      磁盘缓存
 ```
 
 `aster::cache` 负责来源识别、加载、缓存、解码、缩放和 `ImagePipeline`。`aster::gui` 依赖 cache，负责 QWidget 生命周期和绘制。CMake 目标为 `aster::cache` 和 `aster::gui`。
@@ -75,6 +75,32 @@ QObject::connect(subscription, &aster::cache::ImageSubscription::finished,
 ```
 
 `ImageSubscription` 由 Qt parent 管理。调用 `cancel()` 或销毁 parent 会取消订阅。`physicalTargetSize` 使用物理像素。
+
+### 自定义 Decoder
+
+可以使用 `ImageDecoder::create(...)` 给 Pipeline 注册自定义静态图片格式。自定义 Decoder 按注册顺序匹配，全部不匹配时 Aster 才会使用受资源限制保护的 Qt Decoder：
+
+```cpp
+#include "aster/cache/decoder/imagedecoder.h"
+
+config.addDecoder(aster::cache::ImageDecoder::create(
+    {"sample/custom-format", 1, serializedParameters},
+    [](const QByteArray& bytes, const QByteArray& contentType) {
+        return bytes.startsWith("CSTM"); // 优先检查文件签名，不要只依赖 Content-Type。
+    },
+    [](const QByteArray& bytes,
+       const aster::cache::DecodeContext& context,
+       const std::atomic<bool>& cancelled) {
+        if (cancelled.load())
+            return aster::cache::ImageResult::failure(
+                aster::cache::ImageError::Cancelled);
+        return decodeCustomImage(bytes, context.limits);
+    }));
+```
+
+某个 Decoder 声明支持后，其结果就是最终结果；损坏的自定义图片不会继续交给其他 Decoder。匹配器和解码函数可能被并发调用，必须保证线程安全。解码函数在分配内存时必须响应取消，并遵守 `DecodeContext::limits`。Aster 还会在外层再次检查空图、尺寸、像素数和实际解码字节数。
+
+Decoder 身份、参数和顺序都会进入 rendered cache key。规范化后的响应 Content-Type 会作为提示传入，并用于隔离内容级 rendered cache 项，但服务端可能返回错误 Header，因此 Decoder 仍应检查字节签名。`addDecoder()` 通过 `RenderOptions` 提供 Decoder，标准 `ImageRenderer` 会执行它们；完全自定义的 renderer 需要自行遵守相同选项。
 
 ### 图片转换
 

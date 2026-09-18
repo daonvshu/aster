@@ -1,5 +1,6 @@
 #pragma once
 
+#include "aster/cache/decoder/imagedecoder.h"
 #include "imagerendergeometry.h"
 #include "imageresult.h"
 #include "imagetransformation.h"
@@ -68,7 +69,9 @@ struct RenderOptions {
     double dpr = 1.0;
     QByteArray fitMode = "contain";
     QVector<ProcessorIdentity> processors;
+    QVector<QSharedPointer<IImageDecoder>> decoders;
     QVector<QSharedPointer<ImageTransformation>> transformations;
+    QByteArray contentTypeHint;
     quint32 schemaVersion = 1;
     ImageScaleAlgorithm scaleAlgorithm = ImageScaleAlgorithm::QtSmooth;
     quint32 resamplerVersion = 1;

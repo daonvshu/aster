@@ -23,10 +23,10 @@ aster is an asynchronous image loading and caching framework built with C++17, Q
                   |
             aster::cache
          +--------+--------+
- SourceLoader  Pipeline   Renderer
+ SourceLoader  Pipeline       Renderer
       |           |              |
- local/network  merge/cancel    decode/scale
-      |           |                  |
+ local/network  merge/cancel  Decoder chain
+      |           |           scale/transform
  Encoded Cache  Rendered Cache  Disk Cache
 ```
 
@@ -75,6 +75,32 @@ QObject::connect(subscription, &aster::cache::ImageSubscription::finished,
 ```
 
 `ImageSubscription` is owned by its Qt parent. Calling `cancel()` or destroying the parent cancels the subscription. `physicalTargetSize` is expressed in physical pixels.
+
+### Custom Decoders
+
+Register custom static-image formats on a pipeline with `ImageDecoder::create(...)`. Custom decoders are matched in registration order before Aster falls back to Qt's bounded decoder:
+
+```cpp
+#include "aster/cache/decoder/imagedecoder.h"
+
+config.addDecoder(aster::cache::ImageDecoder::create(
+    {"sample/custom-format", 1, serializedParameters},
+    [](const QByteArray& bytes, const QByteArray& contentType) {
+        return bytes.startsWith("CSTM"); // Prefer a file signature over Content-Type.
+    },
+    [](const QByteArray& bytes,
+       const aster::cache::DecodeContext& context,
+       const std::atomic<bool>& cancelled) {
+        if (cancelled.load())
+            return aster::cache::ImageResult::failure(
+                aster::cache::ImageError::Cancelled);
+        return decodeCustomImage(bytes, context.limits);
+    }));
+```
+
+Once a decoder reports support, its result is terminal; a corrupt custom image does not fall through to another decoder. Matchers and handlers may run concurrently and must be thread-safe. Handlers must observe cancellation and `DecodeContext::limits` while allocating. Aster validates the returned image again for null images, dimensions, pixel count, and decoded byte size.
+
+Decoder identity, parameters, and order are part of the rendered cache key. The normalized response Content-Type is passed as a hint and also isolates content-level rendered entries, but decoders should inspect the byte signature because servers may send incorrect headers. `addDecoder()` supplies decoders through `RenderOptions`; the standard `ImageRenderer` handles them. A fully custom renderer must honor the same options itself.
 
 ### Image Transformations
 

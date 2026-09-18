@@ -54,7 +54,7 @@ QSharedPointer<ImagePipeline> buildPipeline(const ImageServiceConfig& config) {
         resources.active = QSharedPointer<ActiveResourceStore>::create(config.activeMemoryBytes, config.clock);
 
     return QSharedPointer<ImagePipeline>::create(memory, loader, config.renderer, config.workerCount, config.events, std::move(resources),
-                                                 config.pipelineInterceptors);
+                                                 config.pipelineInterceptors, config.decoders);
 }
 } // namespace
 
@@ -76,6 +76,13 @@ ImageServiceConfig& ImageServiceConfig::addInterceptor(QSharedPointer<IPipelineI
     if (!interceptor)
         throw std::invalid_argument("Pipeline interceptor must not be null");
     pipelineInterceptors.push_back(std::move(interceptor));
+    return *this;
+}
+
+ImageServiceConfig& ImageServiceConfig::addDecoder(QSharedPointer<IImageDecoder> decoder) {
+    if (!decoder)
+        throw std::invalid_argument("Image decoder must not be null");
+    decoders.push_back(std::move(decoder));
     return *this;
 }
 

@@ -1,8 +1,8 @@
 #pragma once
 
 #include "imageresult.h"
+#include "processoridentity.h"
 
-#include <QByteArray>
 #include <QColor>
 #include <QSharedPointer>
 
@@ -10,16 +10,6 @@
 #include <functional>
 
 namespace aster::cache {
-struct ProcessorIdentity {
-    QByteArray identifier;
-    quint32 version = 1;
-    QByteArray parameters;
-
-    bool operator==(const ProcessorIdentity& other) const {
-        return identifier == other.identifier && version == other.version && parameters == other.parameters;
-    }
-};
-
 class ImageTransformation {
 public:
     using Handler = std::function<ImageResult(QImage, const std::atomic<bool>&)>;

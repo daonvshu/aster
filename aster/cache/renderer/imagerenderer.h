@@ -11,6 +11,10 @@ public:
     ImageResult operator()(const QByteArray& bytes, const RenderOptions& options, const std::atomic<bool>& cancelled) const;
 
 private:
+    ImageResult decodeImage(const QByteArray& bytes, const RenderOptions& options, const std::atomic<bool>& cancelled) const;
+    ImageResult validateDecoded(ImageResult result, const std::atomic<bool>& cancelled) const;
+
+    DecodeLimits decodeLimits_;
     BoundedImageDecoder decoder_;
     ImageResampler resampler_;
 };

@@ -25,6 +25,7 @@ struct ImageServiceConfig {
     QList<QSharedPointer<IHttpInterceptor>> httpInterceptors;
     QList<QSharedPointer<ISourceInterceptor>> sourceInterceptors;
     QList<QSharedPointer<IPipelineInterceptor>> pipelineInterceptors;
+    QVector<QSharedPointer<IImageDecoder>> decoders;
     QSharedPointer<IDiskCache> sourceDisk;
     QSharedPointer<RenderedDiskCache> renderedDisk;
     QSharedPointer<IImageSourceLoader> sourceLoader;
@@ -49,6 +50,13 @@ struct ImageServiceConfig {
      * @return This configuration for chained calls.
      */
     ImageServiceConfig& addInterceptor(QSharedPointer<IPipelineInterceptor> interceptor);
+
+    /**
+     * @brief Adds a custom image decoder. Decoders match in registration order before the Qt decoder fallback.
+     * @param decoder Decoder to add. It must not be null.
+     * @return This configuration for chained calls.
+     */
+    ImageServiceConfig& addDecoder(QSharedPointer<IImageDecoder> decoder);
 };
 
 class ImageService final {

@@ -61,7 +61,7 @@ if(BUILD_TESTING)
     add_executable(aster_tests tests/cache_tests.cpp tests/second_round_tests.cpp
         tests/third_round_tests.cpp tests/fourth_round_tests.cpp tests/imageservice_tests.cpp
         tests/friendly_request_tests.cpp tests/resampler_tests.cpp
-        tests/transformation_tests.cpp
+        tests/transformation_tests.cpp tests/decoder_tests.cpp
         tests/reference/picasaresampler.cpp tests/resources/source_resources.qrc)
     set_target_properties(aster_tests PROPERTIES AUTORCC ON)
     target_link_libraries(aster_tests PRIVATE aster::cache)

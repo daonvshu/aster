@@ -9,6 +9,7 @@
 #include <QBuffer>
 #include <QDirIterator>
 #include <QFile>
+#include <QImageReader>
 #include <QSharedPointer>
 #include <QTemporaryDir>
 #include <QtEndian>
@@ -84,6 +85,11 @@ void exactStatsAndDump() {
 void boundedDecode() {
     const auto bytes = png();
     const std::atomic<bool> running{false}, cancelled{true};
+    const DecodeLimits defaults;
+    const auto supportedFormats = QImageReader::supportedImageFormats();
+    ENSURE(defaults.allowedFormats.size() == supportedFormats.size());
+    for (int i = 0; i < supportedFormats.size(); ++i)
+        ENSURE(defaults.allowedFormats[i] == supportedFormats[i]);
     BoundedImageDecoder decoder;
     auto result = decoder.decode(bytes, running);
     ENSURE(result && result.value->size() == QSize(16, 16));

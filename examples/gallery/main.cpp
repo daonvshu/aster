@@ -8,7 +8,6 @@
 
 #include <QApplication>
 #include <QCommandLineParser>
-#include <QImageReader>
 #include <QMessageBox>
 #include <QStandardPaths>
 
@@ -24,10 +23,8 @@ int main(int argc, char** argv) {
     parser.addPositionalArgument("folder", "Image folder to open", "[folder]");
     parser.process(app);
     try {
-        aster::cache::DecodeLimits limits;
-        limits.allowedFormats = QImageReader::supportedImageFormats();
         aster::cache::ImageServiceConfig config;
-        config.renderer = aster::cache::ImageRenderer(limits);
+        config.renderer = aster::cache::ImageRenderer{};
         config.renderedMemoryBytes = 128 * 1024 * 1024;
         config.activeMemoryBytes = 64 * 1024 * 1024;
         config.workerCount = 4;

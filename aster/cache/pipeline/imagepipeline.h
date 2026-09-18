@@ -51,7 +51,7 @@ public:
 
     ImagePipeline(QSharedPointer<IImageMemoryCache>, SourceTask, Renderer, EventSink = {});
     ImagePipeline(QSharedPointer<IImageMemoryCache>, QSharedPointer<IImageSourceLoader>, Renderer, int workerCount = 4, EventSink = {}, PipelineResources = {},
-                  QList<QSharedPointer<IPipelineInterceptor>> interceptors = {});
+                  QList<QSharedPointer<IPipelineInterceptor>> interceptors = {}, QVector<QSharedPointer<IImageDecoder>> decoders = {});
     ~ImagePipeline();
 
     ImagePipeline(const ImagePipeline&) = delete;

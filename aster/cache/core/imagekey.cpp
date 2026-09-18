@@ -99,13 +99,24 @@ Result<RenderKey> KeyBuilder::render(const SourceKey& source, const RenderOption
     QByteArray bytes;
     QDataStream stream(&bytes, QIODevice::WriteOnly);
     configure(stream);
-    stream << QByteArray("aster/render/v3") << source.digest << qint32(o.physicalTargetSize.width()) << qint32(o.physicalTargetSize.height()) << o.dpr
-           << o.fitMode << o.schemaVersion << quint32(o.scaleAlgorithm) << o.resamplerVersion << quint32(o.processors.size());
+    const auto contentType = o.contentTypeHint.split(';').value(0).trimmed().toLower();
+    stream << QByteArray("aster/render/v4") << source.digest << qint32(o.physicalTargetSize.width()) << qint32(o.physicalTargetSize.height()) << o.dpr
+           << o.fitMode << o.schemaVersion << quint32(o.scaleAlgorithm) << o.resamplerVersion << contentType << quint32(o.processors.size());
 
     for (const auto& p : o.processors) {
         if (p.identifier.isEmpty() || p.version == 0)
             return Result<RenderKey>::failure(ImageError::InvalidRequest);
         stream << p.identifier << p.version << p.parameters;
+    }
+
+    stream << quint32(o.decoders.size());
+    for (const auto& decoder : o.decoders) {
+        if (!decoder)
+            return Result<RenderKey>::failure(ImageError::InvalidRequest);
+        const auto& identity = decoder->identity();
+        if (identity.identifier.isEmpty() || identity.version == 0)
+            return Result<RenderKey>::failure(ImageError::InvalidRequest);
+        stream << identity.identifier << identity.version << identity.parameters;
     }
 
     stream << quint32(o.transformations.size());

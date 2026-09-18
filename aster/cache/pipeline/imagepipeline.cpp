@@ -64,6 +64,7 @@ struct ImagePipeline::State {
     QSharedPointer<QThreadPool> workers;
     PipelineResources resources;
     QList<QSharedPointer<IPipelineInterceptor>> interceptors;
+    QVector<QSharedPointer<IImageDecoder>> decoders;
     InFlightRegistry<QByteArray, SourcePayload> payloads;
     InFlightRegistry<QByteArray, QImage> loadedRenders;
     std::atomic<bool> accepting{true};
@@ -200,7 +201,8 @@ PipelineStats ImagePipeline::stats() const {
 }
 
 ImagePipeline::ImagePipeline(QSharedPointer<IImageMemoryCache> cache, QSharedPointer<IImageSourceLoader> loader, Renderer renderer, int workerCount,
-                             EventSink sink, PipelineResources resources, QList<QSharedPointer<IPipelineInterceptor>> interceptors)
+                             EventSink sink, PipelineResources resources, QList<QSharedPointer<IPipelineInterceptor>> interceptors,
+                             QVector<QSharedPointer<IImageDecoder>> decoders)
     : state_(QSharedPointer<State>::create()) {
     if (!cache || !loader || !renderer || workerCount <= 0)
         throw std::invalid_argument("Invalid pipeline dependencies");
@@ -212,6 +214,10 @@ ImagePipeline::ImagePipeline(QSharedPointer<IImageMemoryCache> cache, QSharedPoi
     for (const auto& interceptor : state_->interceptors)
         if (!interceptor)
             throw std::invalid_argument("Pipeline interceptor must not be null");
+    state_->decoders = std::move(decoders);
+    for (const auto& decoder : state_->decoders)
+        if (!decoder || decoder->identity().identifier.isEmpty() || decoder->identity().version == 0)
+            throw std::invalid_argument("Image decoder must have a valid identity");
     state_->renderer = std::move(renderer);
     state_->sink = std::move(sink);
     state_->workers = QSharedPointer<QThreadPool>::create();
@@ -220,16 +226,20 @@ ImagePipeline::ImagePipeline(QSharedPointer<IImageMemoryCache> cache, QSharedPoi
 
 Subscription ImagePipeline::request(const SourceRequest& input, Completion callback) {
     const auto state = state_;
+    auto request = input;
+    request.render.decoders += state->decoders;
     if (state->interceptors.isEmpty())
-        return requestSource(state, input, std::move(callback));
+        return requestSource(state, request, std::move(callback));
 
     return PipelineInterceptorChain::start(
             state->interceptors, [state](SourceRequest request, PipelineCompletion completion) { return requestSource(state, request, std::move(completion)); },
-            input, std::move(callback));
+            std::move(request), std::move(callback));
 }
 
 Subscription ImagePipeline::requestSource(const QSharedPointer<State>& state, const SourceRequest& input, Completion callback) {
     auto request = input;
+    if (request.render.contentTypeHint.isEmpty())
+        request.render.contentTypeHint = request.source.contentType;
     request.load.enableSourceDisk = input.load.enableSourceDisk &&
             (input.diskStrategy == DiskCacheStrategy::SourceOnly || input.diskStrategy == DiskCacheStrategy::All ||
              (input.diskStrategy == DiskCacheStrategy::Automatic && input.source.kind == ImageSource::Kind::Network));
@@ -307,9 +317,11 @@ Subscription ImagePipeline::requestSource(const QSharedPointer<State>& state, co
                                     return;
                                 }
                                 const auto& p = *payload.value;
+                                const auto contentType =
+                                        (p.contentType.isEmpty() ? request.render.contentTypeHint : p.contentType).split(';').value(0).trimmed().toLower();
                                 RenderKey contentKey = key;
-                                contentKey.digest = QCryptographicHash::hash(key.digest + QCryptographicHash::hash(p.bytes, QCryptographicHash::Sha256),
-                                                                             QCryptographicHash::Sha256);
+                                contentKey.digest = QCryptographicHash::hash(
+                                        key.digest + QCryptographicHash::hash(p.bytes, QCryptographicHash::Sha256) + contentType, QCryptographicHash::Sha256);
 
                                 const bool renderedDisk = state->resources.renderedDisk &&
                                         (request.diskStrategy == DiskCacheStrategy::RenderedOnly || request.diskStrategy == DiskCacheStrategy::All ||
@@ -361,7 +373,9 @@ Subscription ImagePipeline::requestSource(const QSharedPointer<State>& state, co
                                 ImageResult result;
                                 try {
                                     state->event(PipelineEvent::Kind::RenderStarted, key.digest);
-                                    result = state->renderer(p.bytes, request.render, *token);
+                                    auto renderOptions = request.render;
+                                    renderOptions.contentTypeHint = contentType;
+                                    result = state->renderer(p.bytes, renderOptions, *token);
                                     if (token->load()) {
                                         done(ImageResult::failure(ImageError::Cancelled));
                                         return;

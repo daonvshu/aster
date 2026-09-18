@@ -5,6 +5,7 @@ add_library(aster_cache STATIC
     renderer/imagerenderer.cpp
     renderer/imagetransformation.cpp
     decoder/boundedimagedecoder.cpp
+    decoder/imagedecoder.cpp
     cache/renderedmemorycache.cpp
     cache/encodedmemorycache.cpp
     cache/filediskcache.cpp
