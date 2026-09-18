@@ -3,6 +3,18 @@
 #include <QFileInfo>
 #include <QPainter>
 
+namespace {
+bool sameTransformations(const QVector<QSharedPointer<aster::cache::ImageTransformation>>& first,
+                         const QVector<QSharedPointer<aster::cache::ImageTransformation>>& second) {
+    if (first.size() != second.size())
+        return false;
+    for (int index = 0; index < first.size(); ++index)
+        if (!first[index] || !second[index] || !(first[index]->identity() == second[index]->identity()))
+            return false;
+    return true;
+}
+} // namespace
+
 CacheWidget::CacheWidget(QSharedPointer<aster::cache::ImagePipeline> pipeline, aster::cache::ImageScaleAlgorithm algorithm, QWidget* parent)
     : QWidget(parent)
     , pipeline_(std::move(pipeline))
@@ -28,6 +40,7 @@ void CacheWidget::setSource(const QString& source) {
     options.dpr = devicePixelRatioF();
     options.fitMode = aster::cache::fitName(fit_);
     options.scaleAlgorithm = algorithm_;
+    options.transformations = transformations_;
     auto* subscription = pipeline_->request(source, options, this);
     subscription_ = subscription;
     connect(subscription, &aster::cache::ImageSubscription::finished, this, [this, subscription](aster::cache::ImageResult result) {
@@ -45,6 +58,14 @@ void CacheWidget::setFit(aster::cache::ImageFit fit) {
     if (fit_ == fit)
         return;
     fit_ = fit;
+    if (!source_.isEmpty())
+        setSource(source_);
+}
+
+void CacheWidget::setTransformations(QVector<QSharedPointer<aster::cache::ImageTransformation>> transformations) {
+    if (sameTransformations(transformations_, transformations))
+        return;
+    transformations_ = std::move(transformations);
     if (!source_.isEmpty())
         setSource(source_);
 }

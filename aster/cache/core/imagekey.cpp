@@ -99,13 +99,21 @@ Result<RenderKey> KeyBuilder::render(const SourceKey& source, const RenderOption
     QByteArray bytes;
     QDataStream stream(&bytes, QIODevice::WriteOnly);
     configure(stream);
-    stream << QByteArray("aster/render/v2") << source.digest << qint32(o.physicalTargetSize.width()) << qint32(o.physicalTargetSize.height()) << o.dpr
+    stream << QByteArray("aster/render/v3") << source.digest << qint32(o.physicalTargetSize.width()) << qint32(o.physicalTargetSize.height()) << o.dpr
            << o.fitMode << o.schemaVersion << quint32(o.scaleAlgorithm) << o.resamplerVersion << quint32(o.processors.size());
 
     for (const auto& p : o.processors) {
         if (p.identifier.isEmpty() || p.version == 0)
             return Result<RenderKey>::failure(ImageError::InvalidRequest);
         stream << p.identifier << p.version << p.parameters;
+    }
+
+    stream << quint32(o.transformations.size());
+    for (const auto& transformation : o.transformations) {
+        if (!transformation)
+            return Result<RenderKey>::failure(ImageError::InvalidRequest);
+        const auto& identity = transformation->identity();
+        stream << identity.identifier << identity.version << identity.parameters;
     }
 
 #if ASTER_LANCZOS_USE_LUT

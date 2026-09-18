@@ -29,6 +29,22 @@ ImageBoxConfig& ImageBoxConfig::scaleAlgorithm(cache::ImageScaleAlgorithm value)
     return *this;
 }
 
+QVector<QSharedPointer<cache::ImageTransformation>> ImageBoxConfig::transformations() const {
+    return transformations_;
+}
+
+ImageBoxConfig& ImageBoxConfig::addTransformation(QSharedPointer<cache::ImageTransformation> transformation) {
+    if (!transformation)
+        throw std::invalid_argument("Image transformation must not be null");
+    transformations_.push_back(std::move(transformation));
+    return *this;
+}
+
+ImageBoxConfig& ImageBoxConfig::clearTransformations() {
+    transformations_.clear();
+    return *this;
+}
+
 int ImageBoxConfig::resizeDebounce() const {
     return resizeDebounce_;
 }

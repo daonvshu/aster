@@ -1,10 +1,12 @@
 #pragma once
 
 #include "aster/cache/core/imagerendergeometry.h"
+#include "aster/cache/core/imagetransformation.h"
 #include "aster/gui/imageboxtypes.h"
 
 #include <QImage>
 #include <QSharedPointer>
+#include <QVector>
 
 #include <functional>
 
@@ -41,6 +43,25 @@ public:
      * @param value Scaling algorithm.
      */
     ImageBoxConfig& scaleAlgorithm(cache::ImageScaleAlgorithm value);
+
+    /**
+     * @brief Returns the image transformations. The default is empty.
+     * @return Transformation sequence applied after scaling.
+     */
+    QVector<QSharedPointer<cache::ImageTransformation>> transformations() const;
+
+    /**
+     * @brief Adds an image transformation after the current sequence.
+     * @param transformation Transformation to add. It must not be null.
+     * @return This configuration for chained calls.
+     */
+    ImageBoxConfig& addTransformation(QSharedPointer<cache::ImageTransformation> transformation);
+
+    /**
+     * @brief Removes all image transformations.
+     * @return This configuration for chained calls.
+     */
+    ImageBoxConfig& clearTransformations();
 
     /**
      * @brief Returns resize debounce. The default is 75 ms.
@@ -220,6 +241,7 @@ private:
     friend class ImageBox;
     cache::ImageFit fit_ = cache::ImageFit::Cover;
     cache::ImageScaleAlgorithm scaleAlgorithm_ = cache::ImageScaleAlgorithm::QtSmooth;
+    QVector<QSharedPointer<cache::ImageTransformation>> transformations_;
     int resizeDebounce_ = 75;
     int sizeBucket_ = 1;
     QImage placeholder_;

@@ -76,6 +76,37 @@ QObject::connect(subscription, &aster::cache::ImageSubscription::finished,
 
 `ImageSubscription` 由 Qt parent 管理。调用 `cancel()` 或销毁 parent 会取消订阅。`physicalTargetSize` 使用物理像素。
 
+### 图片转换
+
+图片转换会在缩放之后、写入 rendered cache 之前按顺序执行。Aster 内置灰度、反色、透明度、色调混合和盒式模糊转换：
+
+```cpp
+options.transformations = {
+    aster::cache::ImageTransformation::grayscale(),
+    aster::cache::ImageTransformation::tint(QColor("#4a90e2"), 0.2),
+    aster::cache::ImageTransformation::blur(3),
+};
+```
+
+转换顺序以及每个转换的标识、版本和参数都会进入 rendered cache key。因此，等价的转换实例可以复用同一缓存项，修改参数或顺序则会生成不同缓存项；源缓存仍然保留原始字节。
+
+可以使用 `ImageTransformation::create(...)` 实现自定义效果。相同输出必须使用稳定的身份，算法或参数变化时必须更新版本或参数。回调可能被并发执行，必须检查取消标记，并且返回图片的尺寸必须保持不变：
+
+```cpp
+auto custom = aster::cache::ImageTransformation::create(
+    {"sample/custom-effect", 1, serializedParameters},
+    [](QImage image, const std::atomic<bool>& cancelled) {
+        if (cancelled.load())
+            return aster::cache::ImageResult::failure(
+                aster::cache::ImageError::Cancelled);
+        applyCustomEffect(image);
+        return aster::cache::ImageResult::success(std::move(image));
+    });
+options.transformations.push_back(custom);
+```
+
+`ImageBox` 可以通过链式配置 `.addTransformation(...)` 添加相同的转换对象。替换转换序列会发起新请求，生成的 rendered cache 项仍可由其他 ImageBox 复用。
+
 ### HTTP 拦截器
 
 使用 `HttpInterceptor::create(...)` 可以修改或观察请求、短路返回响应，或者重试后续拦截器链：

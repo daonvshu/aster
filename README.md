@@ -76,6 +76,37 @@ QObject::connect(subscription, &aster::cache::ImageSubscription::finished,
 
 `ImageSubscription` is owned by its Qt parent. Calling `cancel()` or destroying the parent cancels the subscription. `physicalTargetSize` is expressed in physical pixels.
 
+### Image Transformations
+
+Transformations run in order after scaling and before the rendered image is cached. Aster includes grayscale, invert, opacity, tint, and box blur transformations:
+
+```cpp
+options.transformations = {
+    aster::cache::ImageTransformation::grayscale(),
+    aster::cache::ImageTransformation::tint(QColor("#4a90e2"), 0.2),
+    aster::cache::ImageTransformation::blur(3),
+};
+```
+
+The transformation order and each transformation's identifier, version, and parameters are part of the rendered cache key. Equivalent transformation instances therefore share rendered entries, while a parameter or order change creates a separate entry. Source caches continue to store the original bytes.
+
+Use `ImageTransformation::create(...)` for a custom effect. The identity must remain stable for the same output and must change when the algorithm or its parameters change. The callable may run concurrently, must observe the cancellation flag, and must return an image with the same dimensions:
+
+```cpp
+auto custom = aster::cache::ImageTransformation::create(
+    {"sample/custom-effect", 1, serializedParameters},
+    [](QImage image, const std::atomic<bool>& cancelled) {
+        if (cancelled.load())
+            return aster::cache::ImageResult::failure(
+                aster::cache::ImageError::Cancelled);
+        applyCustomEffect(image);
+        return aster::cache::ImageResult::success(std::move(image));
+    });
+options.transformations.push_back(custom);
+```
+
+For `ImageBox`, add the same objects to its fluent configuration with `.addTransformation(...)`. Replacing the transformation sequence starts a new request, and the resulting rendered cache entry remains reusable by other boxes.
+
 ### HTTP Interceptors
 
 Use `HttpInterceptor::create(...)` to modify or observe requests, short-circuit responses, or retry the remaining chain:

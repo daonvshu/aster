@@ -3,6 +3,7 @@ add_library(aster_cache STATIC
     core/imagerendergeometry.cpp
     renderer/imageresampler.cpp
     renderer/imagerenderer.cpp
+    renderer/imagetransformation.cpp
     decoder/boundedimagedecoder.cpp
     cache/renderedmemorycache.cpp
     cache/encodedmemorycache.cpp

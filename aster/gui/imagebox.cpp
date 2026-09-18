@@ -12,6 +12,17 @@
 #include <algorithm>
 
 namespace aster::gui {
+namespace {
+bool sameTransformations(const QVector<QSharedPointer<cache::ImageTransformation>>& first, const QVector<QSharedPointer<cache::ImageTransformation>>& second) {
+    if (first.size() != second.size())
+        return false;
+    for (int index = 0; index < first.size(); ++index)
+        if (!first[index] || !second[index] || !(first[index]->identity() == second[index]->identity()))
+            return false;
+    return true;
+}
+} // namespace
+
 ImageBox::ImageBox(QWidget* parent)
     : QWidget(parent)
     , presentation_(new detail::ImageBoxPresentation(*this, config_)) {
@@ -42,7 +53,8 @@ QSharedPointer<cache::ImagePipeline> ImageBox::pipeline() const {
 
 void ImageBox::setConfig(const ImageBoxConfig& config) {
     Q_ASSERT(QThread::currentThread() == thread());
-    const bool requestChanged = config_.fit_ != config.fit_ || config_.scaleAlgorithm_ != config.scaleAlgorithm_ || config_.sizeBucket_ != config.sizeBucket_;
+    const bool requestChanged = config_.fit_ != config.fit_ || config_.scaleAlgorithm_ != config.scaleAlgorithm_ ||
+            !sameTransformations(config_.transformations_, config.transformations_) || config_.sizeBucket_ != config.sizeBucket_;
     const bool offscreenPolicyChanged = config_.offscreenPolicy_ != config.offscreenPolicy_;
     const bool transitionChanged = config_.transition_ != config.transition_ || config_.transitionPolicy_ != config.transitionPolicy_ ||
             config_.transitionDuration_ != config.transitionDuration_;
@@ -187,6 +199,7 @@ void ImageBox::startRequest() {
     options.dpr = dpr;
     options.fitMode = cache::fitName(config_.fit_);
     options.scaleAlgorithm = config_.scaleAlgorithm_;
+    options.transformations = config_.transformations_;
     auto* subscription = pipeline->request(source_, options, this);
     if (!guard)
         return;

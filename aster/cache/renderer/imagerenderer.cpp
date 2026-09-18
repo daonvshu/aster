@@ -1,6 +1,8 @@
 #include "imagerenderer.h"
 
 #include <cmath>
+#include <new>
+#include <utility>
 
 namespace aster::cache {
 ImageRenderer::ImageRenderer(DecodeLimits decodeLimits, ResampleLimits resampleLimits)
@@ -20,8 +22,32 @@ ImageResult ImageRenderer::operator()(const QByteArray& bytes, const RenderOptio
     if (!geometry)
         return ImageResult::failure(geometry.error);
     auto result = resampler_.resize(*decoded.value, *geometry.value, options.scaleAlgorithm, cancelled);
-    if (result)
-        result.value->setDevicePixelRatio(options.dpr);
+    if (!result)
+        return result;
+
+    const auto expectedSize = result.value->size();
+    for (const auto& transformation : options.transformations) {
+        if (cancelled.load())
+            return ImageResult::failure(ImageError::Cancelled);
+        if (!transformation)
+            return ImageResult::failure(ImageError::InvalidRequest, "Null image transformation");
+        try {
+            result = transformation->transform(std::move(*result.value), cancelled);
+        } catch (const std::bad_alloc&) {
+            return ImageResult::failure(ImageError::ResourceLimit, "Image transformation allocation failed");
+        } catch (...) {
+            return ImageResult::failure(ImageError::ProcessingError, "Image transformation threw");
+        }
+        if (cancelled.load())
+            return ImageResult::failure(ImageError::Cancelled);
+        if (!result && result.error == ImageError::None)
+            return ImageResult::failure(ImageError::ProcessingError, "Image transformation returned no image or error");
+        if (!result)
+            return result;
+        if (result.value->isNull() || result.value->size() != expectedSize)
+            return ImageResult::failure(ImageError::ProcessingError, "Image transformation changed the output dimensions");
+    }
+    result.value->setDevicePixelRatio(options.dpr);
     return result;
 }
 } // namespace aster::cache

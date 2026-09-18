@@ -2,6 +2,7 @@
 
 #include "imagerendergeometry.h"
 #include "imageresult.h"
+#include "imagetransformation.h"
 
 #include <QByteArray>
 #include <QSize>
@@ -62,17 +63,12 @@ struct LocalFingerprint {
     QByteArray contentHash;
 };
 
-struct ProcessorIdentity {
-    QByteArray identifier;
-    quint32 version = 1;
-    QByteArray parameters;
-};
-
 struct RenderOptions {
     QSize physicalTargetSize;
     double dpr = 1.0;
     QByteArray fitMode = "contain";
     QVector<ProcessorIdentity> processors;
+    QVector<QSharedPointer<ImageTransformation>> transformations;
     quint32 schemaVersion = 1;
     ImageScaleAlgorithm scaleAlgorithm = ImageScaleAlgorithm::QtSmooth;
     quint32 resamplerVersion = 1;

@@ -129,6 +129,7 @@ private Q_SLOTS:
         QCOMPARE(config.fit(), ImageFit::Cover);
         QCOMPARE(config.transition(), ImageTransition::CrossFade);
         QCOMPARE(config.transitionPolicy(), TransitionPolicy::FirstLoadOrNonMemoryCache);
+        QVERIFY(config.transformations().isEmpty());
         config.fit(ImageFit::Cover)
                 .scaleAlgorithm(ImageScaleAlgorithm::Lanczos3)
                 .resizeDebounce(100)
@@ -144,6 +145,8 @@ private Q_SLOTS:
         QVERIFY_EXCEPTION_THROWN(config.scaleAlgorithm(static_cast<ImageScaleAlgorithm>(-1)), std::invalid_argument);
         QVERIFY_EXCEPTION_THROWN(config.scaleAlgorithm(static_cast<ImageScaleAlgorithm>(int(ImageScaleAlgorithm::Lanczos4) + 1)), std::invalid_argument);
         QCOMPARE(config.scaleAlgorithm(), ImageScaleAlgorithm::Lanczos3);
+        QVERIFY_EXCEPTION_THROWN(config.addTransformation({}), std::invalid_argument);
+        QVERIFY(config.transformations().isEmpty());
         QVERIFY_EXCEPTION_THROWN(config.resizeDebounce(-1), std::invalid_argument);
         QVERIFY_EXCEPTION_THROWN(config.resizeDebounce(60001), std::invalid_argument);
         QCOMPARE(config.resizeDebounce(), 100);
@@ -670,11 +673,13 @@ private Q_SLOTS:
     }
 
     void dimensionsAlgorithmsAndResize() {
+        const auto grayscale = ImageTransformation::grayscale();
         ImageBox configBox;
         configBox.resize(32, 32);
         configBox.setConfig(ImageBoxConfig()
                                     .fit(ImageFit::Cover)
                                     .scaleAlgorithm(ImageScaleAlgorithm::Lanczos3)
+                                    .addTransformation(grayscale)
                                     .resizeDebounce(120)
                                     .sizeBucket(8)
                                     .cornerRadius(6)
@@ -685,6 +690,9 @@ private Q_SLOTS:
                                     .build());
         QCOMPARE(configBox.config().fit(), ImageFit::Cover);
         QCOMPARE(configBox.config().scaleAlgorithm(), ImageScaleAlgorithm::Lanczos3);
+        QCOMPARE(configBox.config().transformations().size(), 1);
+        QCOMPARE(configBox.config().transformations().front(), grayscale);
+        QCOMPARE(configBox.config().clearTransformations().transformations().size(), 0);
         QCOMPARE(configBox.config().resizeDebounce(), 120);
         QCOMPARE(configBox.config().sizeBucket(), 8);
         QCOMPARE(configBox.config().cornerRadius(), qreal(6));
@@ -719,7 +727,7 @@ private Q_SLOTS:
                                                               });
         DprBox box;
         box.setPipeline(pipeline);
-        box.setConfig(ImageBoxConfig().fit(ImageFit::Fill).build());
+        box.setConfig(ImageBoxConfig().fit(ImageFit::Fill).addTransformation(grayscale).build());
         box.resize(101, 51);
         QSignalSpy loaded(&box, &ImageBox::loaded);
         QSignalSpy started(&box, &ImageBox::loadingStarted);
@@ -730,6 +738,8 @@ private Q_SLOTS:
         {
             std::lock_guard<std::mutex> lock(mutex);
             QCOMPARE(recorded.back().scaleAlgorithm, ImageScaleAlgorithm::QtSmooth);
+            QCOMPARE(recorded.back().transformations.size(), 1);
+            QCOMPARE(recorded.back().transformations.front(), grayscale);
             QVERIFY(renderThread != QThread::currentThread());
         }
         for (const qreal ratio : {1.25, 1.5, 2.0, 3.0}) {

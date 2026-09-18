@@ -524,6 +524,7 @@ void fourthRoundTests();
 void imageServiceTests();
 void friendlyRequestTests();
 void resamplerTests();
+void transformationTests();
 int diskCrashProbe(const QStringList&);
 
 int main(int argc, char** argv) {
@@ -553,6 +554,7 @@ int main(int argc, char** argv) {
         fourthRoundTests();
         friendlyRequestTests();
         resamplerTests();
+        transformationTests();
         imageServiceTests();
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
