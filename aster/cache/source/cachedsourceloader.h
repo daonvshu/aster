@@ -23,6 +23,7 @@ public:
     void trimMemory(bool critical) override;
     SourceCacheStats cacheStats() const override;
     bool invalidate(const CacheSelector&) override;
+    bool clearDiskCache(const std::atomic<bool>* cancelled = nullptr) override;
     Result<SourcePayload> load(const ImageSource&, const SourceKey&, const SourceLoadOptions&, const std::atomic<bool>&) override;
 
 private:

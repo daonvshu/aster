@@ -76,6 +76,10 @@ bool SourceInterceptorLoader::invalidate(const CacheSelector& selector) {
     return loader_->invalidate(selector);
 }
 
+bool SourceInterceptorLoader::clearDiskCache(const std::atomic<bool>* cancelled) {
+    return loader_->clearDiskCache(cancelled);
+}
+
 Result<SourcePayload> SourceInterceptorLoader::load(const ImageSource& source, const SourceKey& key, const SourceLoadOptions& options,
                                                     const std::atomic<bool>& cancelled) {
     using R = Result<SourcePayload>;

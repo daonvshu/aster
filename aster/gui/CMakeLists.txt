@@ -8,6 +8,7 @@ add_library(aster_gui STATIC
     imageboxconfig.h
     imageboxtypes.h
     gui.h
+
     private/imageboxpresentation.cpp
     private/imageboxpresentation.h
     private/imageframepainter.cpp

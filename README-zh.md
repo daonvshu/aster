@@ -76,6 +76,33 @@ QObject::connect(subscription, &aster::cache::ImageSubscription::finished,
 
 `ImageSubscription` 由 Qt parent 管理。调用 `cancel()` 或销毁 parent 会取消订阅。`physicalTargetSize` 使用物理像素。
 
+### 磁盘存储
+
+`IDiskCache` 是原始 source 条目和 rendered 条目的存储边界。默认情况下，`ImageService::configure()` 和 `ImageService::createPipeline()` 会分别创建位于 `QStandardPaths::CacheLocation/source/aster-cache-v1` 与 `QStandardPaths::CacheLocation/rendered/aster-cache-v1` 的 `FileDiskCache`。Qt 会根据组织名和应用名解析缓存路径，`FileDiskCache` 会追加版本目录以隔离磁盘格式。默认预算均为 256 MiB，单条上限为 32 MiB。可以通过 `diskCacheDirectory`、`sourceDiskBytes`、`renderedDiskBytes` 和 `maxDiskEntryBytes` 调整；设置 `enableDefaultDiskCache = false` 可以关闭默认磁盘缓存。
+
+Aster 还提供使用事务的 SQLite 实现，可显式替换默认文件缓存：
+
+```cpp
+#include "aster/cache/cache/sqlitediskcache.h"
+#include "aster/cache/cache/rendereddiskcache.h"
+
+#include <QStandardPaths>
+
+auto disk = QSharedPointer<aster::cache::SqliteDiskCache>::create(
+    QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/images.sqlite",
+    512 * 1024 * 1024,
+    32 * 1024 * 1024);
+
+config.sourceDisk = disk;
+config.renderedDisk = QSharedPointer<aster::cache::RenderedDiskCache>::create(disk);
+```
+
+`SqliteDiskCache` 使用事务原子替换条目，把 metadata 与数据一起保存，读取时校验 SHA-256，并在超过字节预算时按最近最少使用策略驱逐。应用也可以针对其他数据库、加密存储或对象存储实现 `IDiskCache`，然后注入到上述两个位置。自定义实现必须支持并发调用，写入失败时保留旧条目，并在维护操作中响应取消。
+
+调用 `pipeline->clearDiskCaches()` 可以同时清空该 Pipeline 的 source 与 rendered 磁盘缓存；`pipeline->cacheStats()` 分别返回两者的占用和命中统计。
+
+SQLite 后端由 CMake 选项 `ASTER_ENABLE_SQLITE_DISK_CACHE` 控制，默认值为 `ON`。设置为 `OFF` 后，构建不会查找或链接 QtSql，也不会编译 SQLite 后端和相关测试。
+
 ### 自定义 Decoder
 
 可以使用 `ImageDecoder::create(...)` 给 Pipeline 注册自定义静态图片格式。自定义 Decoder 按注册顺序匹配，全部不匹配时 Aster 才会使用受资源限制保护的 Qt Decoder：

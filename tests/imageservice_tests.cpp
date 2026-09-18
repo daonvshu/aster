@@ -1,7 +1,9 @@
 #include "aster/cache/service/imageservice.h"
 
+#include <QDir>
 #include <QSharedPointer>
 #include <QStringList>
+#include <QTemporaryDir>
 
 #include <future>
 #include <iostream>
@@ -252,6 +254,7 @@ void pipelineInterceptorTests() {
     });
 
     ImageServiceConfig config;
+    config.enableDefaultDiskCache = false;
     config.renderedMemoryBytes = 65536;
     config.renderer = [renders](const QByteArray& bytes, const auto& options, const auto&) {
         ++*renders;
@@ -313,6 +316,7 @@ void pipelineInterceptorTests() {
 
 void independentPipelineTests() {
     ImageServiceConfig base;
+    base.enableDefaultDiskCache = false;
     base.renderer = [](const QByteArray& bytes, const auto& options, const auto&) {
         QImage image(options.physicalTargetSize, QImage::Format_ARGB32);
         image.fill(bytes == "page-a" ? Qt::red : bytes == "page-b" ? Qt::blue : Qt::green);
@@ -359,6 +363,27 @@ void independentPipelineTests() {
     require(pageANetwork->calls == 1 && pageANetwork->lastOptions.headers.value("x-page") == "a", "Page A request did not use its interceptor");
     require(pageBNetwork->calls == 1 && pageBNetwork->lastOptions.headers.value("x-page") == "b", "Page B request did not use its interceptor");
 }
+
+void defaultDiskCacheTests() {
+    QTemporaryDir directory;
+    require(directory.isValid(), "Default disk cache test directory is unavailable");
+
+    ImageServiceConfig config;
+    config.diskCacheDirectory = directory.path();
+    config.renderer = [](const QByteArray&, const auto& options, const auto&) {
+        QImage image(options.physicalTargetSize, QImage::Format_ARGB32);
+        image.fill(Qt::green);
+        return ImageResult::success(std::move(image));
+    };
+    auto pipeline = ImageService::createPipeline(config);
+    require(QDir(directory.filePath("source/aster-cache-v1")).exists(), "Default source disk cache directory was not created");
+    require(QDir(directory.filePath("rendered/aster-cache-v1")).exists(), "Default rendered disk cache directory was not created");
+    require(bool(load(pipeline)), "Default disk cache pipeline did not load an image");
+    require(pipeline->cacheStats().renderedDisk.entryCount == 1, "Default rendered disk cache did not store the image");
+    require(pipeline->clearDiskCaches(), "Default disk caches could not be cleared");
+    const auto stats = pipeline->cacheStats();
+    require(stats.rawDisk.entryCount == 0 && stats.renderedDisk.entryCount == 0, "Default disk cache clear left entries");
+}
 } // namespace
 
 void imageServiceTests() {
@@ -366,6 +391,7 @@ void imageServiceTests() {
     sourceInterceptorTests();
     pipelineInterceptorTests();
     independentPipelineTests();
+    defaultDiskCacheTests();
     require(!ImageService::isConfigured());
     bool rejected = false;
     try {
@@ -384,6 +410,7 @@ void imageServiceTests() {
 
     auto renders = QSharedPointer<std::atomic<int>>::create(0);
     ImageServiceConfig config;
+    config.enableDefaultDiskCache = false;
     config.renderedMemoryBytes = 65536;
     config.encodedMemoryBytes = 8192;
     config.activeMemoryBytes = 32768;

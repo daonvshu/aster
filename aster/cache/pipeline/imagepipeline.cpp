@@ -325,9 +325,7 @@ Subscription ImagePipeline::requestSource(const QSharedPointer<State>& state, co
 
                                 const bool renderedDisk = state->resources.renderedDisk &&
                                         (request.diskStrategy == DiskCacheStrategy::RenderedOnly || request.diskStrategy == DiskCacheStrategy::All ||
-                                         (request.diskStrategy == DiskCacheStrategy::Automatic &&
-                                          (request.source.kind == ImageSource::Kind::Local || request.source.kind == ImageSource::Kind::Resource) &&
-                                          request.expensiveProcessing));
+                                         request.diskStrategy == DiskCacheStrategy::Automatic);
                                 auto finish = [&](ImageResult result) {
                                     if (token->load()) {
                                         done(ImageResult::failure(ImageError::Cancelled));
@@ -451,6 +449,25 @@ bool ImagePipeline::waitForIdle(int timeoutMs) {
 
 QVector<CacheDebugEntry> ImagePipeline::debugDump(int limit) const {
     return state_->cache->debugDump(limit);
+}
+
+bool ImagePipeline::clearDiskCaches(const std::atomic<bool>* cancelled) {
+    bool success = true;
+    if (state_->loader) {
+        try {
+            success = state_->loader->clearDiskCache(cancelled);
+        } catch (...) {
+            success = false;
+        }
+    }
+    if (state_->resources.renderedDisk) {
+        try {
+            success = state_->resources.renderedDisk->clear(cancelled) && success;
+        } catch (...) {
+            success = false;
+        }
+    }
+    return success;
 }
 
 bool ImagePipeline::invalidate(const CacheSelector& selector, bool includeSource) {

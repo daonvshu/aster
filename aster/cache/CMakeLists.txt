@@ -1,32 +1,57 @@
-add_library(aster_cache STATIC
+set(ASTER_CACHE_SOURCES
     core/imagekey.cpp
     core/imagerendergeometry.cpp
+
     renderer/imageresampler.cpp
     renderer/imagerenderer.cpp
     renderer/imagetransformation.cpp
+
     decoder/boundedimagedecoder.cpp
     decoder/imagedecoder.cpp
+
     cache/renderedmemorycache.cpp
     cache/encodedmemorycache.cpp
     cache/filediskcache.cpp
     cache/rendereddiskcache.cpp
+)
+
+if(ASTER_ENABLE_SQLITE_DISK_CACHE)
+    list(APPEND ASTER_CACHE_SOURCES cache/sqlitediskcache.cpp)
+endif()
+
+list(APPEND ASTER_CACHE_SOURCES
     pipeline/activeresourcestore.cpp
     pipeline/pipelineinterceptor.cpp
+    pipeline/imagesubscription.cpp
+    pipeline/imagesubscription.h
+    pipeline/imagepipeline.cpp
+
     source/cachedsourceloader.cpp
     source/httpinterceptor.cpp
     source/imagesource.cpp
     source/sourceinterceptor.cpp
-    pipeline/imagesubscription.cpp
-    pipeline/imagesubscription.h
+
     service/imageservice.cpp
-    pipeline/imagepipeline.cpp)
+)
+
+add_library(aster_cache STATIC ${ASTER_CACHE_SOURCES})
 add_library(aster::cache ALIAS aster_cache)
+
 option(ASTER_LANCZOS_USE_LUT "Use approximate integer Lanczos kernel tables by default" OFF)
-target_compile_definitions(aster_cache PUBLIC ASTER_LANCZOS_USE_LUT=$<BOOL:${ASTER_LANCZOS_USE_LUT}>)
+target_compile_definitions(aster_cache PUBLIC
+    ASTER_LANCZOS_USE_LUT=$<BOOL:${ASTER_LANCZOS_USE_LUT}>
+    ASTER_ENABLE_SQLITE_DISK_CACHE=$<BOOL:${ASTER_ENABLE_SQLITE_DISK_CACHE}>)
+
 add_library(aster::aster ALIAS aster_cache)
 set_target_properties(aster_cache PROPERTIES AUTOMOC ON)
 target_include_directories(aster_cache PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>)
 target_link_libraries(aster_cache PUBLIC Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Gui Threads::Threads)
+
+if(ASTER_ENABLE_SQLITE_DISK_CACHE)
+    find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Sql)
+    target_link_libraries(aster_cache PUBLIC Qt${QT_VERSION_MAJOR}::Sql)
+endif()
+
 target_compile_features(aster_cache PUBLIC cxx_std_17)
 if(MSVC)
     target_compile_options(aster_cache PUBLIC /utf-8 /Zc:__cplusplus /permissive- PRIVATE /W4)
@@ -46,6 +71,7 @@ endif()
 option(ASTER_BUILD_QT_NETWORK "Build optional QtNetwork transport and local HTTP tests" ON)
 if(ASTER_BUILD_QT_NETWORK)
     find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Network)
+
     add_library(aster_network STATIC source/qtnetworkservice.cpp)
     add_library(aster::network ALIAS aster_network)
     target_link_libraries(aster_network PUBLIC aster::cache Qt${QT_VERSION_MAJOR}::Network)

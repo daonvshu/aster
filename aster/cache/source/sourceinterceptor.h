@@ -101,6 +101,13 @@ public:
     bool invalidate(const CacheSelector& selector) override;
 
     /**
+     * @brief Clears disk entries in the terminal source loader.
+     * @param cancelled Optional cancellation state for long-running maintenance.
+     * @return Whether clearing completed successfully.
+     */
+    bool clearDiskCache(const std::atomic<bool>* cancelled = nullptr) override;
+
+    /**
      * @brief Runs the configured interceptor chain and terminal source loader.
      * @param source Image source to load.
      * @param key Expected identity of the image source.

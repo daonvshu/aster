@@ -134,4 +134,12 @@ bool RenderedDiskCache::invalidate(const CacheSelector& selector) {
     rendered.kind = CacheSelector::Kind::Rendered;
     return disk_->invalidate(rendered);
 }
+
+bool RenderedDiskCache::clear(const std::atomic<bool>* cancelled) {
+    try {
+        return disk_->clear(cancelled);
+    } catch (...) {
+        return false;
+    }
+}
 } // namespace aster::cache

@@ -103,7 +103,7 @@ void diskTests() {
     auto clock = QSharedPointer<FakeClock>::create(1000);
     DiskEntry entry{"old", {{"type", "test"}}};
     FileDiskCache disk(dir.path(), 1024 * 1024, 1024, clock);
-    VERIFY(!disk.stats().indexComplete);
+    VERIFY(disk.stats().indexComplete);
     VERIFY(disk.put(digest(), entry));
     VERIFY(disk.get(digest()).value->bytes == "old");
     const auto cost = disk.stats().totalBytes;
@@ -130,7 +130,8 @@ void diskTests() {
     }
 
     FileDiskCache restarted(dir.path(), 1024 * 1024, 1024, clock);
-    VERIFY(!restarted.stats().indexComplete);
+    VERIFY(restarted.stats().indexComplete);
+    VERIFY(restarted.stats().totalBytes == cost);
     VERIFY(restarted.get(digest()));
     VERIFY(restarted.recover());
     VERIFY(restarted.stats().totalBytes == cost);
@@ -189,9 +190,13 @@ void diskTests() {
         QFile file(blocked);
         VERIFY(file.open(QIODevice::WriteOnly));
     }
-    FileDiskCache unavailable(blocked, 1024, 1024);
-    VERIFY(!unavailable.put(digest(), entry));
-    VERIFY(!unavailable.get(digest()));
+    bool rejected = false;
+    try {
+        FileDiskCache unavailable(blocked, 1024, 1024);
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    VERIFY(rejected);
 }
 
 void sourceTests() {

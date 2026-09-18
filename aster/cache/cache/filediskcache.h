@@ -16,7 +16,7 @@ public:
     using WriteCheckpoint = std::function<bool(WriteStage)>;
 
     FileDiskCache(QString root, qint64 budget, qint64 maxEntry, QSharedPointer<Clock> clock = QSharedPointer<SystemClock>::create(),
-                  WriteCheckpoint checkpoint = {}, QString directoryVersion = "v1");
+                  WriteCheckpoint checkpoint = {}, QString directoryVersion = "v1", bool appendVersionDirectory = true);
     Result<DiskEntry> get(const QByteArray&) override;
     bool put(const QByteArray&, const DiskEntry&) override;
     bool remove(const QByteArray&) override;

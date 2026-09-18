@@ -7,6 +7,7 @@
 #include "aster/cache/source/sourceinterceptor.h"
 
 #include <QSharedPointer>
+#include <QString>
 
 namespace aster::cache {
 struct ImageServiceConfig {
@@ -19,6 +20,12 @@ struct ImageServiceConfig {
     qint64 encodedMemoryBytes = 0;
     qint64 maxEncodedEntryBytes = 32 * 1024 * 1024;
     qint64 activeMemoryBytes = 0;
+
+    bool enableDefaultDiskCache = true;
+    QString diskCacheDirectory;
+    qint64 sourceDiskBytes = 256 * 1024 * 1024;
+    qint64 renderedDiskBytes = 256 * 1024 * 1024;
+    qint64 maxDiskEntryBytes = 32 * 1024 * 1024;
 
     SourceCacheConfig sourceCache;
     QSharedPointer<INetworkService> network;

@@ -193,15 +193,18 @@ void pipelineRoundTrip() {
     }
     input.expensiveProcessing = false;
     REQUIRE(request(pipeline, input));
-    REQUIRE(disk->stats().entryCount == before);
-    memory->clear();
-    input.expensiveProcessing = true;
-    REQUIRE(request(pipeline, input));
     REQUIRE(disk->stats().entryCount == before + 1);
     memory->clear();
     const auto count = renders.load();
     REQUIRE(request(pipeline, input).source == CacheResultSource::RenderedDisk);
     REQUIRE(renders == count);
+    input.expensiveProcessing = true;
+    REQUIRE(request(pipeline, input));
+    REQUIRE(disk->stats().entryCount == before + 1);
+    memory->clear();
+    const auto expensiveCount = renders.load();
+    REQUIRE(request(pipeline, input).source == CacheResultSource::RenderedDisk);
+    REQUIRE(renders == expensiveCount);
     {
         QFile file(input.source.url.toLocalFile());
         REQUIRE(file.open(QIODevice::WriteOnly));

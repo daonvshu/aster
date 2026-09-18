@@ -68,6 +68,14 @@ public:
     bool waitForIdle(int timeoutMs = 30000);
     ImageCacheStats cacheStats() const;
     QVector<CacheDebugEntry> debugDump(int limit = 100) const;
+
+    /**
+     * @brief Clears source and rendered disk caches owned by this pipeline.
+     * @param cancelled Optional cancellation state for long-running maintenance.
+     * @return Whether every configured disk cache was cleared successfully.
+     */
+    bool clearDiskCaches(const std::atomic<bool>* cancelled = nullptr);
+
     bool removeSource(const SourceKey&);
     bool removeRenderVariants(const SourceKey&);
     bool clearNamespace(const QByteArray& nameSpace);

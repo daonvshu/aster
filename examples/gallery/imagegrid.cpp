@@ -47,6 +47,15 @@ ImageGrid::ImageGrid(QSharedPointer<cache::ImagePipeline> pipeline, QWidget* par
     setMinimumWidth(650);
 }
 
+void ImageGrid::setPipeline(QSharedPointer<cache::ImagePipeline> pipeline) {
+    if (pipeline_ == pipeline)
+        return;
+
+    pipeline_ = std::move(pipeline);
+    for (const auto& card : cards_)
+        card.image->setPipeline(pipeline_);
+}
+
 void ImageGrid::clearItems() {
     for (const auto& card : cards_)
         delete card.widget;

@@ -11,6 +11,7 @@
 #include <QComboBox>
 #include <QDir>
 #include <QFile>
+#include <QLabel>
 #include <QPainter>
 #include <QPushButton>
 #include <QScrollBar>
@@ -79,10 +80,26 @@ private Q_SLOTS:
                                                                      QSharedPointer<cache::CachedSourceLoader>::create(nullptr), cache::ImageRenderer{});
         gallery::GalleryWindow window(pipeline);
         window.show();
+        auto* diskCache = window.findChild<QComboBox*>("diskCache");
+        QVERIFY(diskCache);
+        QVERIFY(!diskCache->isEnabled());
+        QVERIFY(window.findChild<QLabel*>("diskCacheSize"));
+        QVERIFY(window.findChild<QPushButton*>("clearDiskCache"));
+        auto replacement = QSharedPointer<cache::ImagePipeline>::create(QSharedPointer<cache::RenderedMemoryCache>::create(16 * 1024 * 1024),
+                                                                        QSharedPointer<cache::CachedSourceLoader>::create(nullptr), cache::ImageRenderer{});
+        window.setDiskCacheFactory([replacement](gallery::GalleryWindow::DiskCacheKind) { return replacement; });
+        QVERIFY(diskCache->isEnabled());
+#if ASTER_ENABLE_SQLITE_DISK_CACHE
+        const auto sqliteIndex = diskCache->findData(int(gallery::GalleryWindow::DiskCacheKind::Sqlite));
+        QVERIFY(sqliteIndex >= 0);
+        diskCache->setCurrentIndex(sqliteIndex);
+#endif
         window.openFolder(directory.path());
         auto* grid = window.findChild<gallery::ImageGrid*>();
         QVERIFY(grid);
         QTRY_COMPARE(grid->imageCount(), 24);
+        QVERIFY(!grid->findChildren<gui::ImageBox*>().isEmpty());
+        QCOMPARE(grid->findChildren<gui::ImageBox*>().first()->pipeline().data(), replacement.data());
         auto* offscreenPolicy = window.findChild<QComboBox*>("offscreenPolicy");
         QVERIFY(offscreenPolicy);
         QCOMPARE(offscreenPolicy->currentData().toInt(), int(gui::OffscreenPolicy::ReleaseImage));

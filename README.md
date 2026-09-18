@@ -76,6 +76,33 @@ QObject::connect(subscription, &aster::cache::ImageSubscription::finished,
 
 `ImageSubscription` is owned by its Qt parent. Calling `cancel()` or destroying the parent cancels the subscription. `physicalTargetSize` is expressed in physical pixels.
 
+### Disk Storage
+
+`IDiskCache` is the storage boundary for raw source entries and rendered entries. By default, `ImageService::configure()` and `ImageService::createPipeline()` create separate `FileDiskCache` instances at `QStandardPaths::CacheLocation/source/aster-cache-v1` and `QStandardPaths::CacheLocation/rendered/aster-cache-v1`. Qt resolves the cache location using the organization and application name, while `FileDiskCache` adds its version directory to isolate on-disk formats. Each cache has a 256 MiB budget and a 32 MiB per-entry limit. Use `diskCacheDirectory`, `sourceDiskBytes`, `renderedDiskBytes`, and `maxDiskEntryBytes` to change these defaults, or set `enableDefaultDiskCache = false` to disable the default disk caches.
+
+Aster also includes a transactional SQLite implementation that can explicitly replace the default filesystem caches:
+
+```cpp
+#include "aster/cache/cache/sqlitediskcache.h"
+#include "aster/cache/cache/rendereddiskcache.h"
+
+#include <QStandardPaths>
+
+auto disk = QSharedPointer<aster::cache::SqliteDiskCache>::create(
+    QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/images.sqlite",
+    512 * 1024 * 1024,
+    32 * 1024 * 1024);
+
+config.sourceDisk = disk;
+config.renderedDisk = QSharedPointer<aster::cache::RenderedDiskCache>::create(disk);
+```
+
+`SqliteDiskCache` uses an atomic transaction for replacement, stores metadata beside the payload, verifies a SHA-256 checksum on reads, and evicts least-recently-used entries when the byte budget is exceeded. Applications can implement `IDiskCache` for another database, encrypted store, or object backend and inject it in the same two locations. Implementations must be thread-safe, preserve old entries when a write fails, and honor cancellation during maintenance operations.
+
+Call `pipeline->clearDiskCaches()` to clear both source and rendered disk caches owned by that pipeline. `pipeline->cacheStats()` reports their usage and hit statistics separately.
+
+The SQLite backend is controlled by the CMake option `ASTER_ENABLE_SQLITE_DISK_CACHE`, which defaults to `ON`. Set it to `OFF` to omit the QtSql dependency, backend source, and SQLite tests from the build.
+
 ### Custom Decoders
 
 Register custom static-image formats on a pipeline with `ImageDecoder::create(...)`. Custom decoders are matched in registration order before Aster falls back to Qt's bounded decoder:

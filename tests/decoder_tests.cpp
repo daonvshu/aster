@@ -242,6 +242,7 @@ void servicePipelineTests() {
             });
 
     ImageServiceConfig config;
+    config.enableDefaultDiskCache = false;
     config.renderer = ImageRenderer{};
     config.renderedMemoryBytes = 64 * 1024;
     require(&config.addDecoder(custom) == &config && config.decoders.size() == 1, "Decoder fluent configuration failed");

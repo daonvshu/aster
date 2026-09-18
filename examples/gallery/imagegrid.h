@@ -11,6 +11,7 @@ class ImageGrid : public QAbstractScrollArea {
 
 public:
     explicit ImageGrid(QSharedPointer<cache::ImagePipeline> pipeline, QWidget* parent = nullptr);
+    void setPipeline(QSharedPointer<cache::ImagePipeline> pipeline);
     void setFiles(QStringList files);
     int imageCount() const;
     int visibleItemCount() const;

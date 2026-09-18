@@ -57,6 +57,16 @@ public:
         return false;
     }
 
+    /**
+     * @brief Clears disk entries owned by this source loader.
+     * @param cancelled Optional cancellation state for long-running maintenance.
+     * @return Whether clearing completed successfully.
+     */
+    virtual bool clearDiskCache(const std::atomic<bool>* cancelled = nullptr) {
+        (void)cancelled;
+        return true;
+    }
+
     virtual Result<SourcePayload> load(const ImageSource&, const SourceKey&, const SourceLoadOptions&, const std::atomic<bool>&) = 0;
 };
 } // namespace aster::cache

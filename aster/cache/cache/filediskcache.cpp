@@ -26,14 +26,19 @@ bool cancelled(const std::atomic<bool>* token) {
 }
 } // namespace
 
-FileDiskCache::FileDiskCache(QString root, qint64 budget, qint64 maxEntry, QSharedPointer<Clock> clock, WriteCheckpoint checkpoint, QString directoryVersion)
-    : root_(QDir(root).absoluteFilePath("aster-cache-" + directoryVersion))
+FileDiskCache::FileDiskCache(QString root, qint64 budget, qint64 maxEntry, QSharedPointer<Clock> clock, WriteCheckpoint checkpoint, QString directoryVersion,
+                             bool appendVersionDirectory)
+    : root_(appendVersionDirectory ? QDir(root).absoluteFilePath("aster-cache-" + directoryVersion) : QDir(root).absolutePath())
     , maxEntry_(std::max<qint64>(0, std::min<qint64>(maxEntry, std::numeric_limits<int>::max() - maxMetadata - headerSize)))
     , clock_(std::move(clock))
     , checkpoint_(std::move(checkpoint)) {
     if (root.isEmpty() || !clock_ || !QRegularExpression("\\A[A-Za-z0-9_-]{1,64}\\z").match(directoryVersion).hasMatch())
         throw std::invalid_argument("Invalid disk cache configuration");
+    if (!QDir().mkpath(root_))
+        throw std::invalid_argument("Could not create disk cache directory");
     stats_.maxBytes = std::max<qint64>(0, budget);
+    if (!scan(nullptr))
+        throw std::invalid_argument("Could not scan disk cache directory");
 }
 
 QString FileDiskCache::path(const QByteArray& key) const {

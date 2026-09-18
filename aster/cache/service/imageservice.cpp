@@ -1,8 +1,11 @@
 #include "imageservice.h"
 
+#include "aster/cache/cache/filediskcache.h"
 #include "aster/cache/cache/renderedmemorycache.h"
 
+#include <QDir>
 #include <QSharedPointer>
+#include <QStandardPaths>
 
 #include <mutex>
 #include <stdexcept>
@@ -25,13 +28,33 @@ ServiceState& state() {
 
 QSharedPointer<ImagePipeline> buildPipeline(const ImageServiceConfig& config) {
     if (!config.renderer || !config.clock || config.workerCount <= 0 || config.renderedMemoryBytes < 0 || config.encodedMemoryBytes < 0 ||
-        config.activeMemoryBytes < 0 || config.maxEncodedEntryBytes <= 0)
+        config.activeMemoryBytes < 0 || config.maxEncodedEntryBytes <= 0 || config.sourceDiskBytes < 0 || config.renderedDiskBytes < 0 ||
+        config.maxDiskEntryBytes <= 0)
         throw std::invalid_argument("Invalid image service configuration");
 
     if (config.sourceLoader && (config.network || !config.httpInterceptors.isEmpty() || config.sourceDisk || config.encodedMemoryBytes != 0))
         throw std::invalid_argument("Custom source loader owns its source cache configuration");
     if (!config.httpInterceptors.isEmpty() && !config.network)
         throw std::invalid_argument("HTTP interceptors require a network service");
+
+    auto sourceDisk = config.sourceDisk;
+    auto renderedDisk = config.renderedDisk;
+    if (config.enableDefaultDiskCache) {
+        auto directory = config.diskCacheDirectory.trimmed();
+        if (directory.isEmpty()) {
+            directory = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+            if (directory.isEmpty())
+                throw std::invalid_argument("System cache directory is unavailable");
+        }
+        if (!config.sourceLoader && !sourceDisk)
+            sourceDisk =
+                    QSharedPointer<FileDiskCache>::create(QDir(directory).filePath("source"), config.sourceDiskBytes, config.maxDiskEntryBytes, config.clock);
+        if (!renderedDisk) {
+            auto backing = QSharedPointer<FileDiskCache>::create(QDir(directory).filePath("rendered"), config.renderedDiskBytes, config.maxDiskEntryBytes,
+                                                                 config.clock);
+            renderedDisk = QSharedPointer<RenderedDiskCache>::create(backing);
+        }
+    }
 
     auto memory = QSharedPointer<RenderedMemoryCache>::create(config.renderedMemoryBytes, config.clock);
     auto loader = config.sourceLoader;
@@ -43,13 +66,13 @@ QSharedPointer<ImagePipeline> buildPipeline(const ImageServiceConfig& config) {
         auto network = config.network;
         if (!config.httpInterceptors.isEmpty())
             network = QSharedPointer<HttpInterceptorNetworkService>::create(network, config.httpInterceptors);
-        loader = QSharedPointer<CachedSourceLoader>::create(encoded, config.sourceDisk, network, config.clock, config.sourceCache);
+        loader = QSharedPointer<CachedSourceLoader>::create(encoded, sourceDisk, network, config.clock, config.sourceCache);
     }
     if (!config.sourceInterceptors.isEmpty())
         loader = QSharedPointer<SourceInterceptorLoader>::create(loader, config.sourceInterceptors);
 
     PipelineResources resources;
-    resources.renderedDisk = config.renderedDisk;
+    resources.renderedDisk = renderedDisk;
     if (config.activeMemoryBytes > 0)
         resources.active = QSharedPointer<ActiveResourceStore>::create(config.activeMemoryBytes, config.clock);
 

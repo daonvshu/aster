@@ -526,6 +526,9 @@ void friendlyRequestTests();
 void resamplerTests();
 void transformationTests();
 void decoderTests();
+#if ASTER_ENABLE_SQLITE_DISK_CACHE
+void sqliteDiskCacheTestsEntry();
+#endif
 int diskCrashProbe(const QStringList&);
 
 int main(int argc, char** argv) {
@@ -558,6 +561,9 @@ int main(int argc, char** argv) {
         transformationTests();
         decoderTests();
         imageServiceTests();
+#if ASTER_ENABLE_SQLITE_DISK_CACHE
+        sqliteDiskCacheTestsEntry();
+#endif
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

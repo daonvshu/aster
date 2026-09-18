@@ -27,6 +27,7 @@ public:
     QByteArray storageKey(const RenderKey&) const;
     DiskStats stats() const;
     bool invalidate(const CacheSelector&);
+    bool clear(const std::atomic<bool>* cancelled = nullptr);
 
 private:
     ImageResult read(const RenderKey&);

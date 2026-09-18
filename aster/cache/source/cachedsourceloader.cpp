@@ -388,4 +388,15 @@ bool CachedSourceLoader::invalidate(const CacheSelector& selector) {
     }
     return success;
 }
+
+bool CachedSourceLoader::clearDiskCache(const std::atomic<bool>* cancelled) {
+    if (!disk_)
+        return true;
+    try {
+        return disk_->clear(cancelled);
+    } catch (...) {
+        ++diskExceptions_;
+        return false;
+    }
+}
 } // namespace aster::cache

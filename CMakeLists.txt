@@ -23,6 +23,8 @@ endif()
 find_package(Threads REQUIRED)
 include(CTest)
 
+option(ASTER_ENABLE_SQLITE_DISK_CACHE "Build the optional SQLite disk cache backend" ON)
+
 add_subdirectory(aster/cache)
 
 option(ASTER_BUILD_GUI "Build the GUI module for ImageBox" ON)
@@ -46,9 +48,13 @@ add_custom_target(aster DEPENDS aster_cache)
 if(BUILD_TESTING)
     if(ASTER_BUILD_GUI)
         find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Test)
-        add_executable(aster_gui_tests tests/imagebox_tests.cpp tests/resources/source_resources.qrc)
+        add_executable(aster_gui_tests
+            tests/imagebox_tests.cpp
+            tests/resources/source_resources.qrc)
+
         set_target_properties(aster_gui_tests PROPERTIES AUTOMOC ON AUTORCC ON)
         target_link_libraries(aster_gui_tests PRIVATE aster::gui Qt${QT_VERSION_MAJOR}::Test)
+
         add_test(NAME aster_gui_tests COMMAND aster_gui_tests)
         set_tests_properties(aster_gui_tests PROPERTIES TIMEOUT 120
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_PLUGIN_PATH=$<TARGET_FILE_DIR:Qt${QT_VERSION_MAJOR}::Core>/../plugins")
@@ -58,45 +64,75 @@ if(BUILD_TESTING)
         endif()
     endif()
 
-    add_executable(aster_tests tests/cache_tests.cpp tests/second_round_tests.cpp
-        tests/third_round_tests.cpp tests/fourth_round_tests.cpp tests/imageservice_tests.cpp
-        tests/friendly_request_tests.cpp tests/resampler_tests.cpp
-        tests/transformation_tests.cpp tests/decoder_tests.cpp
-        tests/reference/picasaresampler.cpp tests/resources/source_resources.qrc)
+    set(ASTER_TEST_SOURCES
+        tests/cache_tests.cpp
+        tests/second_round_tests.cpp
+        tests/third_round_tests.cpp
+        tests/fourth_round_tests.cpp
+        tests/imageservice_tests.cpp
+        tests/friendly_request_tests.cpp
+        tests/resampler_tests.cpp
+        tests/transformation_tests.cpp
+        tests/decoder_tests.cpp
+
+        tests/sqlite_disk_cache_tests.cpp
+
+        tests/reference/picasaresampler.cpp
+
+        tests/resources/source_resources.qrc)
+
+    if(NOT ASTER_ENABLE_SQLITE_DISK_CACHE)
+        list(REMOVE_ITEM ASTER_TEST_SOURCES tests/sqlite_disk_cache_tests.cpp)
+    endif()
+
+    add_executable(aster_tests ${ASTER_TEST_SOURCES})
     set_target_properties(aster_tests PROPERTIES AUTORCC ON)
     target_link_libraries(aster_tests PRIVATE aster::cache)
+
     if(ASTER_BUILD_QT_NETWORK)
         target_link_libraries(aster_tests PRIVATE aster::network)
         target_compile_definitions(aster_tests PRIVATE ASTER_TEST_QT_NETWORK)
         option(ASTER_BUILD_HTTP_TESTS "Build Python-backed HTTP integration tests" ON)
+
         if(ASTER_BUILD_GUI AND ASTER_BUILD_HTTP_TESTS)
             add_subdirectory(tests/http_server)
         endif()
     endif()
+
     add_test(NAME aster_tests COMMAND aster_tests)
     set_tests_properties(aster_tests PROPERTIES TIMEOUT 120)
+
     add_executable(aster_soak tests/cache_soak.cpp)
     target_link_libraries(aster_soak PRIVATE aster::cache)
+
     if(WIN32)
         target_link_libraries(aster_soak PRIVATE Psapi)
     endif()
+
     add_test(NAME aster_soak_smoke COMMAND aster_soak --iterations 3000)
     set_tests_properties(aster_soak_smoke PROPERTIES TIMEOUT 180 LABELS soak)
+
     if(WIN32)
         string(REPLACE ";" "\\;" aster_test_path
             "$<TARGET_FILE_DIR:Qt${QT_VERSION_MAJOR}::Core>;$ENV{PATH}")
         set_tests_properties(aster_tests aster_soak_smoke PROPERTIES
             ENVIRONMENT "PATH=${aster_test_path}")
     endif()
+
     add_test(NAME aster_key_stability COMMAND ${CMAKE_COMMAND}
         -DPROGRAM=$<TARGET_FILE:aster_tests>
         -DQT_RUNTIME_DIR=$<TARGET_FILE_DIR:Qt${QT_VERSION_MAJOR}::Core>
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/key_stability.cmake)
 endif()
+
 option(ASTER_BUILD_BENCHMARKS "Build the cache benchmark" ON)
 if(ASTER_BUILD_BENCHMARKS)
-    add_executable(aster_benchmark benchmarks/cache_benchmark.cpp benchmarks/disk_benchmark.cpp
-        benchmarks/rendered_benchmark.cpp benchmarks/decoder_benchmark.cpp
+    add_executable(aster_benchmark
+        benchmarks/cache_benchmark.cpp
+        benchmarks/disk_benchmark.cpp
+        benchmarks/rendered_benchmark.cpp
+        benchmarks/decoder_benchmark.cpp
         benchmarks/resampler_benchmark.cpp)
+
     target_link_libraries(aster_benchmark PRIVATE aster::cache)
 endif()
