@@ -30,7 +30,7 @@ aster 是一个基于 C++17、Qt 5/6 和 CMake 的异步图片加载与缓存框
  编码缓存      渲染缓存      磁盘缓存
 ```
 
-`aster::cache` 负责来源识别、加载、缓存、解码、缩放和 `ImagePipeline`。`aster::gui` 依赖 cache，负责 QWidget 生命周期和绘制。CMake 目标为 `aster::cache` 和 `aster::gui`。
+`aster::cache` 负责来源识别、加载、缓存、解码、缩放和 `ImagePipeline`。`aster::gui` 依赖 cache，负责 QWidget 生命周期和绘制。CMake 目标为 `aster::cache`，以及可选的 `aster::network` 和 `aster::gui`。
 
 ## 构建
 
@@ -41,6 +41,24 @@ ctest --test-dir build -C Release --output-on-failure
 ```
 
 Qt5 将 `ASTER_QT_MAJOR` 设置为 `5`。使用 `ASTER_BUILD_GUI=OFF` 构建仅包含 cache 的版本，使用 `ASTER_BUILD_GALLERY=OFF` 关闭 Gallery 示例。
+
+## 安装与使用
+
+在已配置的构建目录中安装库和 CMake 包配置：
+
+```sh
+cmake --install build --config Release --prefix /path/to/aster-install
+```
+
+下游应用可以通过 `find_package` 导入导出的目标：
+
+```cmake
+find_package(aster CONFIG REQUIRED)
+target_link_libraries(my_app PRIVATE aster::cache)
+# 使用 ImageBox 时再链接 aster::gui。
+```
+
+包配置会记录构建时使用的 Qt 主版本和可选组件。启用 `ASTER_BUILD_QT_NETWORK=ON` 时会导出 `aster::network`；启用 `ASTER_ENABLE_SQLITE_DISK_CACHE=ON` 时会声明 SQLite 依赖。
 
 ## cache 使用示例
 

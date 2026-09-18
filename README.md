@@ -30,7 +30,7 @@ aster is an asynchronous image loading and caching framework built with C++17, Q
  Encoded Cache  Rendered Cache  Disk Cache
 ```
 
-`aster::cache` provides source identification, loading, caching, decoding, resampling, and `ImagePipeline`. `aster::gui` depends on cache and provides QWidget lifecycle management and painting. The CMake targets are `aster::cache` and `aster::gui`.
+`aster::cache` provides source identification, loading, caching, decoding, resampling, and `ImagePipeline`. `aster::gui` depends on cache and provides QWidget lifecycle management and painting. The CMake targets are `aster::cache`, optional `aster::network`, and optional `aster::gui`.
 
 ## Build
 
@@ -41,6 +41,24 @@ ctest --test-dir build -C Release --output-on-failure
 ```
 
 Set `ASTER_QT_MAJOR=5` for Qt 5. Use `ASTER_BUILD_GUI=OFF` for a cache-only build and `ASTER_BUILD_GALLERY=OFF` to disable the Gallery example.
+
+### Install And Use
+
+Install the library and its CMake package from a configured build tree:
+
+```sh
+cmake --install build --config Release --prefix /path/to/aster-install
+```
+
+Downstream applications can import the exported targets with `find_package`:
+
+```cmake
+find_package(aster CONFIG REQUIRED)
+target_link_libraries(my_app PRIVATE aster::cache)
+# Link aster::gui when using ImageBox.
+```
+
+The package records the Qt major version and optional components used by the build. `aster::network` is exported when `ASTER_BUILD_QT_NETWORK=ON`; the SQLite dependency is exported when `ASTER_ENABLE_SQLITE_DISK_CACHE=ON`.
 
 ## Cache Example
 

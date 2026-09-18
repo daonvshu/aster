@@ -44,7 +44,9 @@ target_compile_definitions(aster_cache PUBLIC
 
 add_library(aster::aster ALIAS aster_cache)
 set_target_properties(aster_cache PROPERTIES AUTOMOC ON)
-target_include_directories(aster_cache PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>)
+target_include_directories(aster_cache PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_link_libraries(aster_cache PUBLIC Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Gui Threads::Threads)
 
 if(ASTER_ENABLE_SQLITE_DISK_CACHE)

@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
 project(aster VERSION 0.1.0 LANGUAGES CXX)
 
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -124,6 +127,81 @@ if(BUILD_TESTING)
         -DQT_RUNTIME_DIR=$<TARGET_FILE_DIR:Qt${QT_VERSION_MAJOR}::Core>
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/key_stability.cmake)
 endif()
+
+set(ASTER_PACKAGE_CONFIG_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/aster")
+set(ASTER_PACKAGE_HAS_GUI ${ASTER_BUILD_GUI})
+set(ASTER_PACKAGE_HAS_NETWORK ${ASTER_BUILD_QT_NETWORK})
+set(ASTER_PACKAGE_HAS_SQLITE ${ASTER_ENABLE_SQLITE_DISK_CACHE})
+
+set_target_properties(aster_cache PROPERTIES EXPORT_NAME cache)
+if(ASTER_BUILD_GUI)
+    set_target_properties(aster_gui PROPERTIES EXPORT_NAME gui)
+endif()
+if(ASTER_BUILD_QT_NETWORK)
+    set_target_properties(aster_network PROPERTIES EXPORT_NAME network)
+endif()
+
+if(ASTER_BUILD_GUI)
+    target_include_directories(aster_gui PUBLIC
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+endif()
+
+install(TARGETS aster_cache
+    EXPORT asterTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+if(ASTER_BUILD_GUI)
+    install(TARGETS aster_gui
+        EXPORT asterTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+endif()
+
+if(ASTER_BUILD_QT_NETWORK)
+    install(TARGETS aster_network
+        EXPORT asterTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+endif()
+
+install(DIRECTORY ${PROJECT_SOURCE_DIR}/aster/cache/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/aster/cache
+    FILES_MATCHING PATTERN "*.h")
+
+if(ASTER_BUILD_GUI)
+    install(DIRECTORY ${PROJECT_SOURCE_DIR}/aster/gui/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/aster/gui
+        FILES_MATCHING PATTERN "*.h"
+        PATTERN "private" EXCLUDE)
+endif()
+
+configure_package_config_file(
+    ${PROJECT_SOURCE_DIR}/cmake/asterConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/asterConfig.cmake
+    INSTALL_DESTINATION ${ASTER_PACKAGE_CONFIG_DIR})
+
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/asterConfigVersion.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion)
+
+install(EXPORT asterTargets
+    FILE asterTargets.cmake
+    NAMESPACE aster::
+    DESTINATION ${ASTER_PACKAGE_CONFIG_DIR})
+
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/asterConfig.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/asterConfigVersion.cmake
+    DESTINATION ${ASTER_PACKAGE_CONFIG_DIR})
 
 option(ASTER_BUILD_BENCHMARKS "Build the cache benchmark" ON)
 if(ASTER_BUILD_BENCHMARKS)
